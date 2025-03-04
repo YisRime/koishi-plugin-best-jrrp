@@ -1,0 +1,22 @@
+{
+  "name": "koishi-plugin-best-jrrp",
+  "description": "最好的今日人品插件，可自定义区间以及特殊值，支持节日消息，含有多种人品值显示模式，内有隐藏功能等待发掘",
+  "version": "0.0.1",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "license": "MIT",
+  "scripts": {},
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin"
+  ],
+  "devDependencies": {},
+  "peerDependencies": {
+    "koishi": "^4.18.7"
+  }
+}
