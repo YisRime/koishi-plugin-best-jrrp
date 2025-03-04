@@ -1,0 +1,90 @@
+_config:
+  $desc: "Daily Luck Configuration"
+  choice:
+    $desc: "Algorithm Selection"
+    $inner:
+      - "Modulo Algorithm"
+      - "Normal Distribution Algorithm"
+      - "Linear Congruential Algorithm"
+  identificationCode: "Identification Code Secret Key"
+  fool:
+    type:
+      $desc: "April Fool's Mode"
+      $inner:
+        - "Off"
+        - "On"
+    date: "Display date (MM-DD) (leave empty to keep enabled)"
+    displayMode:
+      $desc: "Display Mode"
+      $inner:
+        - "Binary"
+        - "Expression"
+    baseNumber: "Expression base number"
+  rangeMessages:
+    $desc: "Ranges (max 10, modify text in localization)"
+    $inner: "Set prompts for different ranges"
+  specialMessages:
+    $desc: "Special Values (max 10, modify text in localization)"
+    $inner: "Set prompts for special values"
+  holidayMessages:
+    $desc: "Dates (max 10, modify text in localization)"
+    $inner: "Set prompts for specific dates (MM-DD)"
+
+commands:
+  jrrp:
+    description: "Daily Luck"
+    usage: |-
+      jrrp - Check today's luck
+      jrrp.date <date> - Check luck for specific date
+      jrrp.score <score> - Find date for specific score
+    messages:
+      result: "Your luck today is: {0}"
+      prompt: "Would you like to check your luck today?"
+      cancel: "Alright, have a nice day!"
+      error: "Error calculating daily luck"
+      found_date: "Your next {0} points will appear on {1}"
+      not_found: "You won't get {0} points in the next year"
+      invalid_number: "Please enter an integer between 0-100"
+      range:
+        1: "...(It's percentile)"
+        2: "?! No way..."
+        3: "! Ugh..."
+        4: "! Barely acceptable...?"
+        5: "! It's okay, it's okay."
+        6: "! Lucky today!"
+        7: "! Excellent!"
+        8: "! Almost 100..."
+        9: "Spare"
+        10: "Spare"
+      special:
+        1: "! Terrible!"
+        2: "! Fifty-fifty..."
+        3: "! 100! 100!!!!"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
+      date:
+        1: "Happy New Year!"
+        2: "Merry Christmas!"
+        3: "Spare"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
+      identification_mode:
+        invalid_code: "Invalid identification code format! Please use format XXXX-XXXX-XXXX-XXXX"
+        bind_success: "Identification code bound successfully!"
+        unbind_success: "Identification code unbound / unbinding successful!"
+        already_bound: "You've already bound this identification code"
+        rebind_success: "Identification code rebinding successful!"
+        perfect_score_first: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing results, please agree to the following terms:\n1. I acknowledge PCL2's Daily Luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (e.g., smashing computers).\n(y/n)"
+    errors:
+      invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"

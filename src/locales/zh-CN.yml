@@ -1,0 +1,90 @@
+_config:
+  $desc: "今日人品配置"
+  choice:
+    $desc: "算法选择"
+    $inner:
+      - "取模算法"
+      - "正态分布算法"
+      - "线性同余算法"
+  identificationCode: "识别码计算密钥"
+  fool:
+    type:
+      $desc: "愚人模式"
+      $inner:
+        - "关闭"
+        - "开启"
+    date: "显示日期(MM-DD)（留空保持开启）"
+    displayMode:
+      $desc: "显示模式"
+      $inner:
+        - "二进制"
+        - "表达式"
+    baseNumber: "构造表达式数字"
+  rangeMessages:
+    $desc: "区间（最多 10 条，文本请在本地化内修改）"
+    $inner: "设置不同区间对应的提示"
+  specialMessages:
+    $desc: "特殊值（最多 10 条，文本请在本地化内修改）"
+    $inner: "设置特殊值对应的提示"
+  holidayMessages:
+    $desc: "日期（最多 10 条，文本请在本地化内修改）"
+    $inner: "设置特定日期（MM-DD）对应的提示"
+
+commands:
+  jrrp:
+    description: "今日人品"
+    usage: |-
+      jrrp - 查看今日人品
+      jrrp.date <日期> - 查看指定日期人品
+      jrrp.score <分数> - 查找指定分数日期
+    messages:
+      result: "你今天的人品值是：{0}"
+      prompt: "你要看看今天的人品吗？"
+      cancel: "好的，祝您今天愉快！"
+      error: "计算今日人品时出错"
+      found_date: "你的下一个 {0} 分会出现在 {1}"
+      not_found: "在未来一年内你不会出现 {0} 分"
+      invalid_number: "请输入 0-100 之间的整数"
+      range:
+        1: "……（是百分制哦）"
+        2: "？！不会吧……"
+        3: "！呜……"
+        4: "！勉强还行吧……？"
+        5: "！还行啦，还行啦。"
+        6: "！今天运气不错呢！"
+        7: "！好评如潮！"
+        8: "！差点就到 100 了呢……"
+        9: "备用"
+        10: "备用"
+      special:
+        1: "！差评如潮！"
+        2: "！五五开……"
+        3: "！100！100！！！！！"
+        4: "备用"
+        5: "备用"
+        6: "备用"
+        7: "备用"
+        8: "备用"
+        9: "备用"
+        10: "备用"
+      date:
+        1: "新年快乐！"
+        2: "圣诞快乐！"
+        3: "备用"
+        4: "备用"
+        5: "备用"
+        6: "备用"
+        7: "备用"
+        8: "备用"
+        9: "备用"
+        10: "备用"
+      identification_mode:
+        invalid_code: "识别码格式错误！请使用形如 XXXX-XXXX-XXXX-XXXX 的格式"
+        bind_success: "识别码绑定成功！"
+        unbind_success: "识别码未绑定 / 解绑成功！"
+        already_bound: "您已绑定该识别码"
+        rebind_success: "识别码换绑成功！"
+        perfect_score_first: "隐藏主题 欧皇粉 已解锁！\n前往 PCL2->更多->百宝箱->今日人品 确认"
+        zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PLC2 的今日人品功能完全没有出 Bug。\n2. PLC2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
+    errors:
+      invalid_date: "日期格式错误，请使用 YYYY-MM-DD 或 MM-DD 格式"
