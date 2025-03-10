@@ -13,16 +13,21 @@ import * as path from 'path'
  */
 export class FileManager {
   private dataPath: string
+  private dataDir: string
 
   /**
    * @constructor
    * @param {string} baseDir - 基础目录路径
    */
   constructor(baseDir: string) {
-    const dataDir = path.join(baseDir, 'data')
-    this.dataPath = path.join(dataDir, 'jrrp.json')
-    if (!fs.existsSync(this.dataPath)) {
-      fs.writeFileSync(this.dataPath, JSON.stringify({}))
+    this.dataDir = path.join(baseDir, 'data')
+    this.dataPath = path.join(this.dataDir, 'jrrp.json')
+    try {
+      if (!fs.existsSync(this.dataPath)) {
+        fs.writeFileSync(this.dataPath, JSON.stringify({}))
+      }
+    } catch (error) {
+      throw new Error(`Failed to ensure data file: ${error.message}`)
     }
   }
 
@@ -35,6 +40,7 @@ export class FileManager {
       const data = fs.readFileSync(this.dataPath, 'utf8')
       return JSON.parse(data)
     } catch (error) {
+      console.error('Failed to load data:', error)
       return {}
     }
   }
@@ -44,7 +50,11 @@ export class FileManager {
    * @param {Record<string, UserData>} data - 要保存的用户数据
    */
   saveData(data: Record<string, UserData>): void {
-    fs.writeFileSync(this.dataPath, JSON.stringify(data, null, 2))
+    try {
+      fs.writeFileSync(this.dataPath, JSON.stringify(data, null, 2))
+    } catch (error) {
+      throw new Error(`Failed to save data: ${error.message}`)
+    }
   }
 
   /**
@@ -80,11 +90,11 @@ export class JrrpCalculator {
    * @returns {bigint} 哈希值
    */
   static getHash(str: string): bigint {
-    let hash = BigInt(5381);
-    for (let i = 0; str.length > i; i++) {
-      hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1));
+    let hash = BigInt(5381)
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1))
     }
-    return hash ^ BigInt('0xa98f501bc684032f');
+    return hash ^ BigInt('0xa98f501bc684032f')
   }
 
   /**
@@ -194,38 +204,32 @@ export class ExpressionGenerator {
    * @returns {string} 生成的表达式
    */
   generateDecimalExpression(target: number, baseNumber: number): string {
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+    if (target <= 10) return this.getDigitExpr(target, baseNumber)
+
     const cached = this.digitExpressions.get(target);
     if (cached) return cached;
 
-    if (target === 100) {
-      const expr = `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-      this.digitExpressions.set(100, expr);
-      return expr;
-    }
-
-    const tens = Math.floor(target / 10);
-    const ones = target % 10;
-
-    // 生成表达式
     let expr: string;
-    if (target <= 20) {
-      // 11-20的数字使用加法表示
-      expr = `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
-    } else if (ones === 0) {
-      // 整十数使用乘法表示
-      expr = `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-    } else if (target <= 50) {
-      // 50以内的数字使用乘加形式
-      expr = `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
+    if (target === 100) {
+      expr = `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
     } else {
-      // 50以上的数字尝试使用更简洁的表达式
-      const nearestTen = tens * 10;
-      if (ones <= 5) {
-        expr = `(${this.generateDecimalExpression(nearestTen, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+      const tens = Math.floor(target / 10);
+      const ones = target % 10;
+
+      if (target <= 20) {
+        expr = `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+      } else if (ones === 0) {
+        expr = `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+      } else if (target <= 50) {
+        expr = `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
       } else {
-        const nextTen = (tens + 1) * 10;
-        expr = `(${this.generateDecimalExpression(nextTen, baseNumber)} - ${this.getDigitExpr(10 - ones, baseNumber)})`;
+        const nearestTen = tens * 10;
+        if (ones <= 5) {
+          expr = `(${this.generateDecimalExpression(nearestTen, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+        } else {
+          const nextTen = (tens + 1) * 10;
+          expr = `(${this.generateDecimalExpression(nextTen, baseNumber)} - ${this.getDigitExpr(10 - ones, baseNumber)})`;
+        }
       }
     }
 
@@ -246,14 +250,11 @@ export class ExpressionGenerator {
     const expr = this.digitExpressions.get(target);
     if (expr) return expr;
     if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-
     // 递归分解函数
     const decompose = (num: number): string => {
       if (num <= 10) return this.getDigitExpr(num, baseNumber);
-
       const predefinedExpr = this.digitExpressions.get(num);
       if (predefinedExpr) return predefinedExpr;
-
       // 尝试因式分解
       for (let i = Math.min(9, Math.floor(Math.sqrt(num))); i >= 2; i--) {
         if (num % i === 0) {
@@ -264,7 +265,6 @@ export class ExpressionGenerator {
           return `(${this.getDigitExpr(i, baseNumber)} * ${decompose(quotient)})`;
         }
       }
-
       // 无法分解时使用加减法
       const base = Math.floor(num / 10) * 10;
       const diff = num - base;
@@ -369,36 +369,37 @@ export class ExpressionGenerator {
    * @returns {string} 格式化后的分数
    */
   formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
-    const isValidFoolDate = () => {
-      if (!foolConfig.date) return true;
-      const [month, day] = foolConfig.date.split('-').map(Number);
-      return date.getMonth() + 1 === month && date.getDate() === day;
-    };
-
-    if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate()) {
-      return score.toString();
-    }
-
     try {
+      const isValidFoolDate = () => {
+        if (!foolConfig.date) return true
+        const [month, day] = foolConfig.date.split('-').map(Number)
+        return date.getMonth() + 1 === month && date.getDate() === day
+      }
+
+      if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate()) {
+        return score.toString()
+      }
+
       switch (foolConfig.displayMode) {
         case DisplayMode.BINARY:
-          return score.toString(2);
+          return score.toString(2)
         case DisplayMode.EXPRESSION:
-          const baseNumber = foolConfig.baseNumber ?? 6;
-          const rand = Math.random();
+          const baseNumber = foolConfig.baseNumber ?? 6
+          const rand = Math.random()
+
           if (rand < 0.33) {
-            return this.generateDecimalExpression(score, baseNumber);
+            return this.generateDecimalExpression(score, baseNumber)
           } else if (rand < 0.66) {
-            return this.generatePrimeFactorsExpression(score, baseNumber);
+            return this.generatePrimeFactorsExpression(score, baseNumber)
           } else {
-            return this.generateMixedOperationsExpression(score, baseNumber);
+            return this.generateMixedOperationsExpression(score, baseNumber)
           }
         default:
-          return score.toString();
+          return score.toString()
       }
     } catch (error) {
-      console.error('Error formatting score:', error);
-      return score.toString();
+      console.error('Error formatting score:', error)
+      return score.toString()
     }
   }
 }
@@ -532,40 +533,50 @@ export class JrrpUtils {
   }
 
   /**
-   * 解析日期字符串
+   * 解析日期字符串，使用正则优化
    * @param {string} dateStr - 日期字符串，格式可以是 YYYY-MM-DD 或 MM-DD
    * @param {Date} defaultDate - 默认日期，用于补充年份
    * @returns {Date|null} 解析后的日期对象，解析失败返回null
    */
   static parseDate(dateStr: string, defaultDate: Date): Date | null {
-    if (!dateStr?.trim()) return null;
-    const normalized = dateStr.trim().replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
-    if (!/^[\d-]+$/.test(normalized)) return null;
-    const parts = normalized.split('-').map(part => parseInt(part.replace(/^0+/, ''), 10));
-    if (!parts.every(n => n > 0)) return null;
+    if (!dateStr?.trim()) return null
 
-    let year: number, month: number, day: number;
-    switch (parts.length) {
-      case 3:
-        [year, month, day] = parts;
-        if (year < 100) {
-          const currentYear = defaultDate.getFullYear();
-          const threshold = (currentYear % 100 + 20) % 100;
-          year = year > threshold ? 1900 + year : 2000 + year;
-        }
-        break;
-      case 2:
-        [month, day] = parts;
-        year = defaultDate.getFullYear();
-        break;
-      default:
-        return null;
+    const normalized = dateStr.trim().replace(/[\s.\/]/g, '-').replace(/-+/g, '-')
+    const fullDateRegex = /^(\d{1,4})-(\d{1,2})-(\d{1,2})$/
+    const shortDateRegex = /^(\d{1,2})-(\d{1,2})$/
+
+    let year: number, month: number, day: number
+
+    const fullDateMatch = normalized.match(fullDateRegex)
+    const shortDateMatch = normalized.match(shortDateRegex)
+
+    if (fullDateMatch) {
+      year = parseInt(fullDateMatch[1], 10)
+      month = parseInt(fullDateMatch[2], 10)
+      day = parseInt(fullDateMatch[3], 10)
+
+      if (year < 100) {
+        const currentYear = defaultDate.getFullYear()
+        const threshold = (currentYear % 100 + 20) % 100
+        year = year > threshold ? 1900 + year : 2000 + year
+      }
+    } else if (shortDateMatch) {
+      year = defaultDate.getFullYear()
+      month = parseInt(shortDateMatch[1], 10)
+      day = parseInt(shortDateMatch[2], 10)
+    } else {
+      return null
     }
 
-    const date = new Date(year, month - 1, day);
+    // 验证日期有效性
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return null
+    }
+
+    const date = new Date(year, month - 1, day)
     return (date.getFullYear() === year &&
             date.getMonth() === month - 1 &&
-            date.getDate() === day) ? date : null;
+            date.getDate() === day) ? date : null
   }
 
   /**
@@ -602,21 +613,31 @@ export class JrrpUtils {
    * @param {any} session - 会话上下文
    * @param {string|object|Array} message - 要撤回的消息或消息ID
    * @param {number} [delay=10000] - 延迟撤回时间(毫秒)
-   * @returns {Function|void} 取消撤回的函数，如果message为空则返回void
    */
-  static async autoRecall(session, message, delay = 10000) {
-    if (!message) return;
-    const timer = setTimeout(async () => {
+  static async autoRecall(session: any, message: any, delay = 10000): Promise<void> {
+    if (!message) return
+
+    setTimeout(async () => {
       try {
-        const messages = Array.isArray(message) ? message : [message];
+        const messages = Array.isArray(message) ? message : [message]
         await Promise.all(messages.map(async msg => {
-          const msgId = typeof msg === 'string' ? msg : msg?.id;
-          if (msgId) await session.bot.deleteMessage(session.channelId, msgId);
-        }));
+          const msgId = typeof msg === 'string' ? msg : msg?.id
+          if (msgId && session.bot && session.channelId) {
+            await session.bot.deleteMessage(session.channelId, msgId)
+          }
+        }))
       } catch (error) {
-        console.warn('Failed to execute auto recall:', error);
+        console.warn('Failed to execute auto recall:', error)
       }
-    }, delay);
-    return () => clearTimeout(timer);
+    }, delay)
+  }
+
+  /**
+   * 格式化月日为MM-DD格式
+   * @param {Date} date - 日期对象
+   * @returns {string} 格式化后的月日字符串
+   */
+  static formatMonthDay(date: Date): string {
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   }
 }

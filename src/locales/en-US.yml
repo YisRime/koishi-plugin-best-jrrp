@@ -37,6 +37,7 @@ commands:
       jrrp - Check today's luck
       jrrp.date <date> - Check luck for specific date
       jrrp.score <score> - Find date for specific score
+      jrrp.bind [code] - Bind/unbind identification code
     messages:
       result: "Your luck today is: {0}"
       prompt: "Would you like to check your luck today?"
