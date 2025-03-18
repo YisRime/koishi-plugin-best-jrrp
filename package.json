@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-best-jrrp",
   "description": "含有多种算法的今日人品，可自定义（区间/特殊值/特殊日期）提示消息，带有愚人节模式，你今天的人品值是：((((6 << 5) + 8) + 4) + (((6 << 5) + 8) + 4))！今天运气不错呢！",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],
