@@ -86,6 +86,6 @@ commands:
         already_bound: "您已绑定该识别码"
         rebind_success: "识别码换绑成功！"
         perfect_score_first: "隐藏主题 欧皇粉 已解锁！\n前往 PCL2->更多->百宝箱->今日人品 确认"
-        zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PLC2 的今日人品功能完全没有出 Bug。\n2. PLC2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
+        zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PCL2 的今日人品功能完全没有出 Bug。\n2. PCL2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
     errors:
       invalid_date: "日期格式错误，请使用 YYYY-MM-DD 或 MM-DD 格式"
