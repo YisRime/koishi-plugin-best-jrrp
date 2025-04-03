@@ -1,8 +1,3 @@
-/**
- * @file 今日人品(JRRP)插件主文件
- * @description 提供今日人品计算、绑定识别码、查询特定分数日期等功能
- * @module best-jrrp
- */
 import { Context, Schema } from 'koishi'
 import { JrrpService } from './JrrpService'
 import { JrrpCalculator } from './JrrpCalculator'
@@ -14,10 +9,14 @@ export const name = 'best-jrrp'
  * @interface UserData
  * @property {string} [identification_code] - 用户的识别码
  * @property {boolean} perfect_score - 是否已获得过满分
+ * @property {number} [randomScore] - Random.org API获取的分数
+ * @property {string} [timestamp] - 分数获取的时间戳
  */
 export interface UserData {
   identification_code?: string
   perfect_score: boolean
+  randomScore?: number
+  timestamp?: string
 }
 
 /**
@@ -26,7 +25,8 @@ export interface UserData {
 export const enum JrrpAlgorithm {
   BASIC = 'basic',
   GAUSSIAN = 'gaussian',
-  LINEAR = 'linear'
+  LINEAR = 'linear',
+  RANDOM_ORG = 'random_org'
 }
 export const enum FoolMode {
   DISABLED = 'disabled',
@@ -57,6 +57,7 @@ export interface Config {
   range?: Record<string, string>
   number?: Record<number, string>
   date?: Record<string, string>
+  randomOrgApi?: string
 }
 
 /**
@@ -69,6 +70,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.BASIC),
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
+      Schema.const(JrrpAlgorithm.RANDOM_ORG),
     ]).default(JrrpAlgorithm.BASIC),
     calCode: Schema.string().default('CODE').role('secret'),
     displayMode: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]).default(FoolMode.DISABLED),
@@ -96,6 +98,22 @@ export const Config: Schema<Config> = Schema.intersect([
         }),
       ]),
     ]),
+  ]).i18n({
+    'zh-CN': require('./locales/zh-CN')._config,
+    'en-US': require('./locales/en-US')._config,
+  }),
+  Schema.union([
+    Schema.object({
+      algorithm: Schema.union([
+        Schema.const(JrrpAlgorithm.BASIC),
+        Schema.const(JrrpAlgorithm.GAUSSIAN),
+        Schema.const(JrrpAlgorithm.LINEAR),
+      ]).hidden(),
+    }),
+    Schema.object({
+      algorithm: Schema.const(JrrpAlgorithm.RANDOM_ORG).required(),
+      randomOrgApi: Schema.string().role('secret'),
+    }),
   ]).i18n({
     'zh-CN': require('./locales/zh-CN')._config,
     'en-US': require('./locales/en-US')._config,
@@ -155,8 +173,7 @@ export async function apply(ctx: Context, config: Config) {
             return
           }
         }
-        // 获取JRRP结果
-        let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false)
+        let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, false)
         // 处理零分确认
         if (fortuneResultText === null) {
           fortuneResultText = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
@@ -169,23 +186,22 @@ export async function apply(ctx: Context, config: Config) {
         await JrrpService.autoRecall(session, message)
       }
     })
-
   // 日期子命令
   jrrp.subcommand('.date <date:text>')
     .action(async ({ session }, date) => {
-      if (!date?.trim()) {
-        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
-        await JrrpService.autoRecall(session, message)
-        return
-      }
-      const dateForCalculation = JrrpService.parseDate(date, new Date())
-      if (!dateForCalculation) {
-        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
-        await JrrpService.autoRecall(session, message)
-        return
-      }
       try {
-        let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false)
+        if (!date?.trim()) {
+          const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
+          await JrrpService.autoRecall(session, message)
+          return
+        }
+        const dateForCalculation = JrrpService.parseDate(date, new Date())
+        if (!dateForCalculation) {
+          const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
+          await JrrpService.autoRecall(session, message)
+          return
+        }
+        let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, true)
         // 处理零分确认
         if (fortuneResultText === null) {
           fortuneResultText = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
@@ -198,7 +214,40 @@ export async function apply(ctx: Context, config: Config) {
         await JrrpService.autoRecall(session, message)
       }
     })
-
+  jrrp.subcommand('.score <score:number>')
+    .action(async ({ session }, score) => {
+      try {
+        if (score < 0 || score > 100) {
+          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
+          await JrrpService.autoRecall(session, message);
+          return;
+        }
+        const calCode = await jrrpService.getIdentificationCode(session.userId);
+        const currentDate = new Date();
+        for (let daysAhead = 1; daysAhead <= 365; daysAhead++) {
+          const futureDate = new Date(currentDate);
+          futureDate.setDate(currentDate.getDate() + daysAhead);
+          const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+          const userDateSeed = `${session.userId}-${dateStr}`;
+          const calculatedScore = JrrpCalculator.calculateScoreWithAlgorithm(
+            userDateSeed,
+            futureDate,
+            config.algorithm === JrrpAlgorithm.RANDOM_ORG ? JrrpAlgorithm.BASIC : config.algorithm,
+            calCode,
+            config.calCode
+          );
+          if (calculatedScore === score) {
+            const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+            await session.send(session.text('commands.jrrp.messages.found_date', [score, formattedDate]));
+            return;
+          }
+        }
+        await session.send(session.text('commands.jrrp.messages.not_found', [score]));
+      } catch (error) {
+        const message = await session.send(session.text('commands.jrrp.messages.error'));
+        await JrrpService.autoRecall(session, message);
+      }
+    })
   jrrp.subcommand('.bind [code:string]')
     .action(async ({ session }, code) => {
       try {
@@ -231,35 +280,5 @@ export async function apply(ctx: Context, config: Config) {
         const message = await session.send(session.text('commands.jrrp.messages.error'))
         await JrrpService.autoRecall(session, message)
       }
-    })
-
-  jrrp.subcommand('.score <score:number>')
-    .action(async ({ session }, score) => {
-      if (score < 0 || score > 100) {
-        const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
-        await JrrpService.autoRecall(session, message);
-        return;
-      }
-      const calCode = await jrrpService.getIdentificationCode(session.userId);
-      const currentDate = new Date();
-      for (let daysAhead = 1; daysAhead <= 365; daysAhead++) {
-        const futureDate = new Date(currentDate);
-        futureDate.setDate(currentDate.getDate() + daysAhead);
-        const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-        const userDateSeed = `${session.userId}-${dateStr}`;
-        const calculatedScore = JrrpCalculator.calculateScoreWithAlgorithm(
-          userDateSeed,
-          futureDate,
-          config.algorithm,
-          calCode,
-          config.calCode
-        );
-        if (calculatedScore === score) {
-          const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-          await session.send(session.text('commands.jrrp.messages.found_date', [score, formattedDate]));
-          return;
-        }
-      }
-      await session.send(session.text('commands.jrrp.messages.not_found', [score]));
     })
 }

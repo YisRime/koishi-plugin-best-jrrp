@@ -6,85 +6,88 @@ _config:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
+      - "True Random (Random.org)"
   calCode: "Calculation Key"
+  randomOrgApi: "Random.org API"
   displayMode:
-    $desc: "April Fools Mode"
+    $desc: "Fool Mode"
     $inner:
       - "Off"
       - "On"
-  displayDate: "Display Date(MM-DD) (Leave empty to keep enabled)"
+  displayDate: "Display Date (MM-DD) (Leave empty to keep enabled)"
   displayType:
     $desc: "Display Mode"
     $inner:
       - "Binary"
       - "Expression"
-  baseNumber: "Construction Number"
+  baseNumber: "Base Number"
   range:
     $desc: "Ranges (Please modify text in localization, maximum 10 entries)"
-    $inner: "Different ranges(0-100) corresponding prompts"
+    $inner: "Different ranges (0-100) corresponding prompts"
   number:
-    $desc: "Values (Please modify text in localization, maximum 10 entries)"
-    $inner: "Special values(0-100) corresponding prompts"
+    $desc: "Numbers (Please modify text in localization, maximum 10 entries)"
+    $inner: "Special values (0-100) corresponding prompts"
   date:
     $desc: "Dates (Please modify text in localization, maximum 10 entries)"
-    $inner: "Special dates(MM-DD) corresponding prompts"
+    $inner: "Special dates (MM-DD) corresponding prompts"
 
 commands:
   jrrp:
-    description: "Daily Luck Rating"
+    description: "Today's Fortune"
     usage: |-
-      jrrp - Check today's luck rating
-      jrrp.date <date> - Check luck rating for a specific date
-      jrrp.score <score> - Find date for a specific score
-      jrrp.bind [identification code] - Bind/unbind identification code
+      jrrp - Check today's fortune
+      jrrp.date <date> - Check fortune for a specific date
+      jrrp.score <score> - Find dates with a specific score
+      jrrp.bind [code] - Bind/unbind identification code
     messages:
-      result: "Your luck rating today is: {0}"
-      prompt: "Would you like to check your luck rating today?"
+      result: "Your fortune value today is: {0}"
+      prompt: "Would you like to check your fortune today?"
       cancel: "Alright, have a nice day!"
-      error: "Error calculating today's luck rating"
+      error: "Error calculating today's fortune"
       found_date: "Your next score of {0} will appear on {1}"
       not_found: "You won't get a score of {0} in the next year"
       invalid_number: "Please enter an integer between 0-100"
       range:
-        1: "...(on a scale of 0-100)"
+        1: "...(It's on a percentage scale)"
         2: "?! No way..."
         3: "! Ugh..."
         4: "! Barely acceptable...?"
         5: "! It's okay, it's okay."
-        6: "! Pretty lucky today!"
+        6: "! Good luck today!"
         7: "! Excellent reviews!"
         8: "! Almost reached 100..."
-        9: "Reserved"
-        10: "Reserved"
+        9: "Spare"
+        10: "Spare"
       number:
         1: "! Terrible reviews!"
         2: "! Fifty-fifty..."
         3: "! 100! 100!!!!"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
       date:
         1: "Happy New Year!"
         2: "Happy April Fools' Day!"
         3: "Merry Christmas!"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
       identification_mode:
         invalid_code: "Invalid identification code format! Please use the format XXXX-XXXX-XXXX-XXXX"
         bind_success: "Identification code bound successfully!"
         unbind_success: "Identification code not bound / unbound successfully!"
         already_bound: "You have already bound this identification code"
-        rebind_success: "Identification code rebound successfully!"
-        perfect_score_first: "Hidden theme 'Lucky Pink' unlocked!\nGo to PLC2->More->Toolbox->Daily Luck Rating to confirm"
-        zero_prompt: "Before viewing the result, please agree to the following additional terms of use:\n1. I acknowledge and understand that the Daily Luck Rating feature in PLC2 is completely bug-free.\n2. PLC2 is not responsible for any indirect property damage (such as smashing computers, etc.) caused by using this software.\n(y/n)"
+        rebind_success: "Identification code rebinding successful!"
+        perfect_score_first: "Hidden theme 'Lucky Pink' unlocked!\nGo to PLC2->More->Toolbox->Today's Fortune to confirm"
+        zero_prompt: "Before viewing the results, please agree to the following additional terms of use:\n1. I acknowledge and understand that PLC2's Today's Fortune feature has not encountered any bugs.\n2. PLC2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
+      random_org_only_today: "The current fortune value is provided by Random.org and only supports checking today's fortune"
     errors:
       invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"

@@ -1,4 +1,4 @@
-import { UserData } from '.'
+import { JrrpAlgorithm, UserData } from '.'
 import { JrrpCalculator, ExpressionGenerator } from './JrrpCalculator'
 import { h } from 'koishi'
 import * as fs from 'fs'
@@ -27,15 +27,11 @@ export class JrrpService {
     this.config = config
     this.expressionGenerator = new ExpressionGenerator()
     try {
-      if (!fs.existsSync(this.dataDir)) {
-        fs.mkdirSync(this.dataDir, { recursive: true })
-      }
       if (!fs.existsSync(this.dataPath)) {
         fs.writeFileSync(this.dataPath, JSON.stringify({}))
       }
       this.userData = this.loadData()
     } catch (error) {
-      console.error('Failed to initialize JRRP service:', error)
       this.userData = {}
       throw new Error(`Failed to ensure data file: ${error.message}`)
     }
@@ -50,8 +46,7 @@ export class JrrpService {
       const data = fs.readFileSync(this.dataPath, 'utf8')
       return JSON.parse(data)
     } catch (error) {
-      console.error('Failed to load data:', error)
-      return {}
+      return
     }
   }
 
@@ -107,7 +102,6 @@ export class JrrpService {
       this.saveData()
       return true
     } catch (error) {
-      console.error('Failed to bind identification code:', error)
       return false
     }
   }
@@ -157,6 +151,52 @@ export class JrrpService {
   }
 
   /**
+   * 检查日期是否为今天
+   * @param {string} timestamp - ISO格式的时间戳
+   * @returns {boolean} 是否为今天
+   */
+  private isToday(timestamp: string): boolean {
+    if (!timestamp) return false;
+    const date = new Date(timestamp);
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  }
+
+  /**
+   * 获取用户的Random.org分数
+   * @param {string} userId - 用户ID
+   * @returns {Promise<number>} 随机分数
+   */
+  private async getRandomOrgScore(userId: string): Promise<number> {
+    // 检查用户是否已有今天的分数
+    if (this.userData[userId]?.randomScore !== undefined &&
+        this.userData[userId]?.timestamp &&
+        this.isToday(this.userData[userId].timestamp)) {
+      return this.userData[userId].randomScore;
+    }
+    // 请求新的随机数
+    const randomScore = await JrrpCalculator.getRandomOrgScore(this.config.randomOrgApi);
+    // 后备基础算法
+    const score = randomScore !== null ? randomScore :
+      JrrpCalculator.calculateScoreWithAlgorithm(`${userId}-${new Date().toISOString().split('T')[0]}`, new Date(), JrrpAlgorithm.BASIC);
+    // 保存分数和时间戳
+    if (!this.userData[userId]) {
+      this.userData[userId] = {
+        perfect_score: false,
+        randomScore: score,
+        timestamp: new Date().toISOString()
+      };
+    } else {
+      this.userData[userId].randomScore = score;
+      this.userData[userId].timestamp = new Date().toISOString();
+    }
+    this.saveData();
+    return score;
+  }
+
+  /**
    * 获取适用于用户分数的消息
    * @param {number} score - 用户分数
    * @param {string} monthDay - 月日字符串 (MM-DD)
@@ -190,27 +230,80 @@ export class JrrpService {
    * @param {any} session - 会话上下文
    * @param {Date} dateForCalculation - 计算用的日期
    * @param {boolean} skipConfirm - 是否跳过零分确认
+   * @param {boolean} isDateCommand - 是否是通过date子命令调用的
    * @returns {Promise<string|null>} 格式化后的消息文本
    */
   async formatJrrpMessage(
     session: any,
     dateForCalculation: Date,
-    skipConfirm = false
+    skipConfirm = false,
+    isDateCommand = false
   ): Promise<string | null> {
     try {
       const monthDay = JrrpService.formatMonthDay(dateForCalculation)
-      const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`
+      let userFortune: number;
       const calCode = await this.getIdentificationCode(session.userId)
-      const userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
-        userDateSeed,
-        dateForCalculation,
-        this.config.algorithm,
-        calCode,
-        this.config.calCode
-      )
+      const isToday = dateForCalculation.toDateString() === new Date().toDateString();
+      // 根据不同算法和条件计算分数
+      if (this.config.algorithm === JrrpAlgorithm.RANDOM_ORG) {
+        // 真随机算法模式
+        if (calCode) {
+          // 有识别码
+          if (isToday && !isDateCommand) {
+            // 今日人品：使用真随机 API
+            userFortune = await this.getRandomOrgScore(session.userId);
+          } else if (isToday && isDateCommand) {
+            // 当天：使用识别码算法
+            userFortune = JrrpCalculator.calculateJrrpWithCode(
+              calCode,
+              dateForCalculation,
+              this.config.calCode
+            );
+          } else {
+            // 其他日期：使用识别码算法
+            userFortune = JrrpCalculator.calculateJrrpWithCode(
+              calCode,
+              dateForCalculation,
+              this.config.calCode
+            );
+          }
+        } else {
+          // 无识别码
+          if (isToday) {
+            // 当天：使用真随机 API
+            userFortune = await this.getRandomOrgScore(session.userId);
+          } else {
+            // 非当天：发送提示信息
+            const message = await session.send(h('at', { id: session.userId }) +
+              session.text('commands.jrrp.messages.random_org_only_today'));
+            await JrrpService.autoRecall(session, message);
+            return
+          }
+        }
+      } else {
+        // 基础算法模式
+        if (calCode) {
+          // 有识别码：使用识别码算法
+          userFortune = JrrpCalculator.calculateJrrpWithCode(
+            calCode,
+            dateForCalculation,
+            this.config.calCode
+          );
+        } else {
+          // 无识别码：使用相应基础算法
+          const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
+          userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
+            userDateSeed,
+            dateForCalculation,
+            this.config.algorithm,
+            null,
+            this.config.calCode
+          );
+        }
+      }
       // 零分确认检查
-      if (!skipConfirm && calCode && userFortune === 0) {
-        return null
+      if (!skipConfirm && userFortune === 0 && calCode) {
+        return null;
       }
       // 格式化分数
       const foolConfig = {

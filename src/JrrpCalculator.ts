@@ -2,6 +2,45 @@ import { DisplayMode, FoolConfig, FoolMode, JrrpAlgorithm } from '.'
 import { JrrpService } from './JrrpService'
 
 /**
+ * Random.org API请求接口
+ */
+export interface RandomOrgRequest {
+  jsonrpc: string;
+  method: string;
+  params: {
+    apiKey: string;
+    n: number;
+    min: number;
+    max: number;
+    replacement: boolean;
+  };
+  id: number;
+}
+
+/**
+ * Random.org API响应接口
+ */
+export interface RandomOrgResponse {
+  jsonrpc: string;
+  result?: {
+    random: {
+      data: number[];
+      completionTime: string;
+    };
+    bitsUsed: number;
+    bitsLeft: number;
+    requestsLeft: number;
+    advisoryDelay: number;
+  };
+  error?: {
+    code: number;
+    message: string;
+    data?: any;
+  };
+  id: number;
+}
+
+/**
  * JRRP计算器类
  * @class JrrpCalculator
  * @description 处理所有JRRP值的计算逻辑
@@ -62,6 +101,53 @@ export class JrrpCalculator {
     const normalizedHash = Math.abs(Number(mergedHash) / 527.0);
     const randomValue = Math.round(normalizedHash) % 1001;
     return randomValue >= 970 ? 100 : Math.round((randomValue / 969.0) * 99.0);
+  }
+
+  /**
+   * 从Random.org API获取真随机数
+   * @param {string} apiKey - Random.org API密钥
+   * @returns {Promise<number|null>} 随机数或null（如果请求失败）
+   */
+  static async getRandomOrgScore(apiKey: string): Promise<number|null> {
+    try {
+      const requestData: RandomOrgRequest = {
+        jsonrpc: "2.0",
+        method: "generateIntegers",
+        params: {
+          apiKey: apiKey,
+          n: 1,
+          min: 0,
+          max: 100,
+          replacement: true
+        },
+        id: 1
+      };
+
+      const response = await fetch('https://api.random.org/json-rpc/4/invoke', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      if (!response.ok) {
+        console.error(`HTTP error! Status: ${response.status}`);
+        return null;
+      }
+
+      const data: RandomOrgResponse = await response.json();
+
+      if (data.error) {
+        console.error('Random.org API error:', data.error);
+        return null;
+      }
+
+      return data.result?.random.data[0] ?? null;
+    } catch (error) {
+      console.error('Failed to fetch random number from Random.org:', error);
+      return null;
+    }
   }
 
   /**
