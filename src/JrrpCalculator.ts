@@ -1,5 +1,6 @@
-import { DisplayMode, FoolConfig, FoolMode, JrrpAlgorithm } from '.'
+import { DisplayMode, FoolConfig, FoolMode, JrrpAlgorithm, ExpressionType } from '.'
 import { JrrpService } from './JrrpService'
+import { expressions } from './expressions'
 
 /**
  * Random.org API请求接口
@@ -175,221 +176,6 @@ export class JrrpCalculator {
       }
     }
   }
-}
-
-/**
- * 表达式生成器类
- * @class ExpressionGenerator
- * @description 生成各种形式的数学表达式
- */
-export class ExpressionGenerator {
-  private digitExpressions = new Map<number, string[]>()
-  private expressionsInitialized = false
-  constructor() {
-    this.expressionsInitialized = true;
-  }
-
-  /**
-   * 获取数字基础表达式
-   * @private
-   * @param {number} n - 目标数字
-   * @param {number} baseNumber - 基础数字
-   * @returns {string} 基础表达式
-   */
-  private getDigitExpr(n: number, baseNumber: number): string {
-    if (!this.expressionsInitialized) {
-      const b = baseNumber;
-      this.digitExpressions.set(b, [String(b)]);
-      // 设置1-9的数字表达式
-      for (let i = 1; i <= 9; i++) {
-        if (i === b) continue;
-        if (i <= 9) {
-          this.digitExpressions.set(i, [String(i)]);
-        }
-      }
-      this.digitExpressions.set(0, [`(${b} - ${b})`, `(${b} ^ ${b})`]);
-      this.digitExpressions.set(10, [`((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`, `(${b} + ${b})`]);
-      // 设置特殊表达式
-      if (b !== 1) this.digitExpressions.set(1, [`(${b} / ${b})`, `(${b} % (${b} + ${b}))`]);
-      if (b !== 2) this.digitExpressions.set(2, [`(${b} >> (${b} / ${b})`, `(${b} & ${b})`]);
-      if (b !== 3) this.digitExpressions.set(3, [`(${b} / (${b} / ${b} << ${b} / ${b}))`, `(${b} - (${b} / ${b}))`]);
-      if (b !== 4) this.digitExpressions.set(4, [`(${b} & (${b} | (${b} / ${b})))`, `(${b} - (${b} / ${b}) + ${b})`]);
-      if (b !== 5) this.digitExpressions.set(5, [`(${b} - ${b} / ${b})`, `(${b} + (${b} / ${b} << ${b}))`]);
-      if (b !== 6) this.digitExpressions.set(6, [`(${b} + (${b} / ${b} >> ${b} / ${b}))`, `(${b} + (${b} & ${b}))`]);
-      if (b !== 7) this.digitExpressions.set(7, [`(${b} + ${b} / ${b})`, `(${b} + ${b} - (${b} / ${b}))`]);
-      if (b !== 8) this.digitExpressions.set(8, [`(${b} + ${b} / ${b} << ${b} / ${b})`, `(${b} | (${b} & ${b}))`]);
-      if (b !== 9) this.digitExpressions.set(9, [`(${b} | (${b} >> ${b} / ${b}))`, `(${b} + ${b} - ${b} / ${b})`]);
-      this.expressionsInitialized = true;
-    }
-    const expressions = this.digitExpressions.get(n);
-    return expressions ? expressions[Math.floor(Math.random() * expressions.length)] : String(n);
-  }
-
-  /**
-   * 生成十进制表达式
-   * @param {number} target - 目标数字
-   * @param {number} baseNumber - 基础数字
-   * @returns {string} 生成的表达式
-   */
-  generateDecimalExpression(target: number, baseNumber: number): string {
-    if (target <= 10) return this.getDigitExpr(target, baseNumber)
-    const cachedExpressions = this.digitExpressions.get(target);
-    if (cachedExpressions && cachedExpressions.length > 0 && Math.random() > 0.3) {
-      return cachedExpressions[Math.floor(Math.random() * cachedExpressions.length)];
-    }
-    let expr: string;
-    if (target === 100) {
-      expr = `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-    } else {
-      const tens = Math.floor(target / 10);
-      const ones = target % 10;
-      // 增加随机性：随机选择策略
-      const strategy = Math.floor(Math.random() * 3);
-      if (strategy === 0 && target <= 20) {
-        expr = `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
-      } else if (strategy === 1 && ones === 0) {
-        expr = `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-      } else if (strategy === 2 && target <= 50) {
-        expr = `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
-      } else {
-        const nearestTen = tens * 10;
-        if (Math.random() > 0.5 && ones <= 5) {
-          expr = `(${this.generateDecimalExpression(nearestTen, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
-        } else {
-          const nextTen = (tens + 1) * 10;
-          expr = `(${this.generateDecimalExpression(nextTen, baseNumber)} - ${this.getDigitExpr(10 - ones, baseNumber)})`;
-        }
-      }
-    }
-    // 存储生成的表达式
-    if (!cachedExpressions) {
-      this.digitExpressions.set(target, [expr]);
-    } else if (cachedExpressions.length < 3) {
-      cachedExpressions.push(expr);
-    }
-    return expr;
-  }
-
-  /**
-   * 生成质因数分解表达式
-   * @param {number} target - 目标数字
-   * @param {number} baseNumber - 基础数字
-   * @returns {string} 生成的表达式
-   */
-  generatePrimeFactorsExpression(target: number, baseNumber: number): string {
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
-    const expr = this.digitExpressions.get(target);
-    if (expr) return expr[Math.floor(Math.random() * expr.length)];
-    if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-    // 递归分解函数
-    const decompose = (num: number): string => {
-      if (num <= 10) return this.getDigitExpr(num, baseNumber);
-      const predefinedExpr = this.digitExpressions.get(num);
-      if (predefinedExpr) return predefinedExpr[Math.floor(Math.random() * predefinedExpr.length)];
-      // 尝试因式分解
-      for (let i = Math.min(9, Math.floor(Math.sqrt(num))); i >= 2; i--) {
-        if (num % i === 0) {
-          const quotient = num / i;
-          if (quotient <= 10) {
-            return `(${this.getDigitExpr(i, baseNumber)} * ${this.getDigitExpr(quotient, baseNumber)})`;
-          }
-          return `(${this.getDigitExpr(i, baseNumber)} * ${decompose(quotient)})`;
-        }
-      }
-      // 无法分解时使用加减法
-      const base = Math.floor(num / 10) * 10;
-      const diff = num - base;
-      if (diff === 0) {
-        return decompose(num / 10) + ` * ${this.getDigitExpr(10, baseNumber)}`;
-      }
-      return diff > 0
-        ? `(${decompose(base)} + ${this.getDigitExpr(diff, baseNumber)})`
-        : `(${decompose(base)} - ${this.getDigitExpr(-diff, baseNumber)})`;
-    };
-    return decompose(target);
-  }
-
-  /**
-   * 生成混合运算表达式
-   * @param {number} target - 目标数字
-   * @param {number} baseNumber - 基础数字
-   * @returns {string} 生成的表达式
-   */
-  generateMixedOperationsExpression(target: number, baseNumber: number): string {
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
-    const cached = this.digitExpressions.get(target);
-    if (cached && cached.length > 0 && Math.random() > 0.3) {
-      return cached[Math.floor(Math.random() * cached.length)];
-    }
-    const b = this.getDigitExpr(baseNumber, baseNumber);
-    let expr = '';
-    if (target === 0) {
-      expr = `(${b} - ${b})`;
-    } else if (target === 100) {
-      expr = `(${b} * ${this.generateMixedOperationsExpression(Math.floor(100/baseNumber), baseNumber)})`;
-    } else {
-      const strategies = [
-        () => {
-          const base = Math.floor(target / 10) * 10;
-          const diff = target - base;
-          return diff >= 0
-            ? `(${this.generateMixedOperationsExpression(base, baseNumber)} + ${this.getDigitExpr(diff, baseNumber)})`
-            : `(${this.generateMixedOperationsExpression(base, baseNumber)} - ${this.getDigitExpr(-diff, baseNumber)})`;
-        },
-        () => {
-          // 找到最接近的能被基数整除的数
-          const quotient = Math.floor(target / baseNumber);
-          const remainder = target % baseNumber;
-          if (remainder === 0) {
-            // 能整除的情况
-            return `(${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)})`;
-          } else if (remainder <= baseNumber / 2) {
-            // 余数较小时，使用加法
-            return `((${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)}) + ${this.getDigitExpr(remainder, baseNumber)})`;
-          } else {
-            // 余数较大时，使用减法（向上取整）
-            return `((${b} * ${this.generateMixedOperationsExpression(quotient + 1, baseNumber)}) - ${this.getDigitExpr(baseNumber - remainder, baseNumber)})`;
-          }
-        },
-        () => {
-          const maxShift = Math.floor(Math.log2(target));
-          const base = 1 << maxShift;
-          const remainder = target - base;
-          if (remainder === 0) {
-            return `(${b} << ${this.getDigitExpr(maxShift, baseNumber)})`;
-          } else if (remainder < 0) {
-            // 如果目标值小于2的幂，使用减法
-            return `((${b} << ${this.getDigitExpr(maxShift, baseNumber)}) - ${this.generateMixedOperationsExpression(-remainder, baseNumber)})`;
-          } else {
-            // 如果有余数，递归处理余数部分
-            return `((${b} << ${this.getDigitExpr(maxShift, baseNumber)}) + ${this.generateMixedOperationsExpression(remainder, baseNumber)})`;
-          }
-        },
-        () => {
-          // 尝试找到最接近的可以简单表示的数
-          for (let i = 1; i <= Math.min(10, target); i++) {
-            if (target % i === 0) {
-              const quotient = target / i;
-              if (quotient <= 10) {
-                return `(${this.getDigitExpr(i, baseNumber)} * ${this.getDigitExpr(quotient, baseNumber)})`;
-              }
-            }
-          }
-          // 如果找不到合适的因子，使用加减法
-          const mid = Math.floor(target / 2);
-          return `(${this.generateMixedOperationsExpression(mid, baseNumber)} + ${this.generateMixedOperationsExpression(target - mid, baseNumber)})`;
-        }
-      ];
-      expr = strategies[Math.floor(Math.random() * strategies.length)]();
-    }
-    // 存储生成的表达式
-    if (!cached) {
-      this.digitExpressions.set(target, [expr]);
-    } else if (cached.length < 3) {
-      cached.push(expr);
-    }
-    return expr;
-  }
 
   /**
    * 根据娱乐模式格式化分数显示
@@ -398,32 +184,30 @@ export class ExpressionGenerator {
    * @param {FoolConfig} foolConfig - 娱乐模式配置
    * @returns {string} 格式化后的分数
    */
-  formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
+  static formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
     try {
       const isValidFoolDate = !foolConfig.date ||
         (date.getMonth() + 1 === parseInt(foolConfig.date.split('-')[0]) &&
          date.getDate() === parseInt(foolConfig.date.split('-')[1]));
-
       if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate) {
         return score.toString()
       }
-      // 每次生成表达式前清除缓存，确保随机性
-      this.digitExpressions.clear();
-      this.expressionsInitialized = false;
-      this.expressionsInitialized = true;
       switch (foolConfig.displayType) {
         case DisplayMode.BINARY:
           return score.toString(2)
         case DisplayMode.EXPRESSION:
-          const baseNumber = foolConfig.baseNumber ?? 6
-          const rand = Math.random()
-          if (rand < 0.33) {
-            return this.generateDecimalExpression(score, baseNumber)
-          } else if (rand < 0.66) {
-            return this.generatePrimeFactorsExpression(score, baseNumber)
-          } else {
-            return this.generateMixedOperationsExpression(score, baseNumber)
+          // 根据表达式类型选择不同的表达式集合
+          const expressionCollection = foolConfig.expressionType === ExpressionType.SIMPLE
+            ? expressions.simple
+            : expressions.complex;
+          // 获取对应分数的表达式列表
+          const scoreExpressions = expressionCollection[score];
+          if (!scoreExpressions || scoreExpressions.length === 0) {
+            return score.toString();
           }
+          // 随机选择一个表达式
+          const randomIndex = Math.floor(Math.random() * scoreExpressions.length);
+          return scoreExpressions[randomIndex];
         default:
           return score.toString()
       }

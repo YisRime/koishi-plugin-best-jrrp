@@ -20,7 +20,11 @@ _config:
     $inner:
       - "Binary"
       - "Expression"
-  baseNumber: "Construction Number"
+  expressionType:
+    $desc: "Expression Type"
+    $inner:
+      - "Simple Expressions"
+      - "Complex Expressions"
   range:
     $desc: "Ranges (Please modify text in localization, maximum 10 entries)"
     $inner: "Different ranges (0-100) corresponding prompts"
@@ -34,11 +38,6 @@ _config:
 commands:
   jrrp:
     description: "Today's Fortune"
-    usage: |-
-      jrrp - Check today's fortune
-      jrrp.date <date> - Check fortune for a specific date
-      jrrp.score <score> - Find date for a specific score
-      jrrp.rank - View today's fortune leaderboard
     messages:
       result: "Your fortune value today is: {0}"
       prompt: "Would you like to check your fortune today?"

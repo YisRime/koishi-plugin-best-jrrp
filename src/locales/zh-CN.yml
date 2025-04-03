@@ -20,7 +20,11 @@ _config:
     $inner:
       - "二进制"
       - "表达式"
-  baseNumber: "构造数字"
+  expressionType:
+    $desc: "表达式类型"
+    $inner:
+      - "简单表达式"
+      - "复杂表达式"
   range:
     $desc: "区间（请在本地化内修改文本，最多 10 条）"
     $inner: "不同区间(0-100)对应的提示"
@@ -34,11 +38,6 @@ _config:
 commands:
   jrrp:
     description: "今日人品"
-    usage: |-
-      jrrp - 查看今日人品
-      jrrp.date <日期> - 查看指定日期人品
-      jrrp.score <分数> - 查找指定分数日期
-      jrrp.rank - 查看今日人品排行榜
     messages:
       result: "你今天的人品值是：{0}"
       prompt: "你要看看今天的人品吗？"

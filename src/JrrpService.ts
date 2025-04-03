@@ -1,5 +1,5 @@
 import { JrrpAlgorithm, UserData } from '.'
-import { JrrpCalculator, ExpressionGenerator } from './JrrpCalculator'
+import { JrrpCalculator } from './JrrpCalculator'
 import { h } from 'koishi'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -13,7 +13,6 @@ export class JrrpService {
   private dataPath: string
   private dataDir: string
   private userData: Record<string, UserData>
-  private expressionGenerator: ExpressionGenerator
   private config: any
 
   /**
@@ -25,7 +24,6 @@ export class JrrpService {
     this.dataDir = path.join(baseDir, 'data')
     this.dataPath = path.join(this.dataDir, 'jrrp.json')
     this.config = config
-    this.expressionGenerator = new ExpressionGenerator()
     try {
       if (!fs.existsSync(this.dataPath)) {
         fs.writeFileSync(this.dataPath, JSON.stringify({}))
@@ -46,7 +44,7 @@ export class JrrpService {
       const data = fs.readFileSync(this.dataPath, 'utf8')
       return JSON.parse(data)
     } catch (error) {
-      return
+      return {}
     }
   }
 
@@ -290,7 +288,7 @@ export class JrrpService {
             const message = await session.send(h('at', { id: session.userId }) +
               session.text('commands.jrrp.messages.random_org_only_today'));
             await JrrpService.autoRecall(session, message);
-            return
+            return null;
           }
         }
       } else {
@@ -323,10 +321,10 @@ export class JrrpService {
         type: this.config.displayMode,
         date: this.config.displayDate,
         displayType: this.config.displayType,
-        baseNumber: this.config.baseNumber
+        expressionType: this.config.expressionType
       }
       // 格式化分数显示
-      const formattedFortune = this.expressionGenerator.formatScore(userFortune, dateForCalculation, foolConfig)
+      const formattedFortune = JrrpCalculator.formatScore(userFortune, dateForCalculation, foolConfig)
       let fortuneResultText = h('at', { id: session.userId }) +
         `${session.text('commands.jrrp.messages.result', [formattedFortune])}`
       // 添加额外消息

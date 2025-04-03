@@ -38,11 +38,15 @@ export const enum DisplayMode {
   BINARY = 'binary',
   EXPRESSION = 'expression'
 }
+export const enum ExpressionType {
+  SIMPLE = 'simple',
+  COMPLEX = 'complex'
+}
 export interface FoolConfig {
   type: FoolMode
   date?: string
   displayType?: DisplayMode
-  baseNumber?: number
+  expressionType?: ExpressionType
 }
 
 /**
@@ -55,7 +59,7 @@ export interface Config {
   displayMode: FoolMode
   displayDate?: string
   displayType?: DisplayMode
-  baseNumber?: number
+  expressionType?: ExpressionType
   range?: Record<string, string>
   number?: Record<number, string>
   date?: Record<string, string>
@@ -96,7 +100,7 @@ export const Config: Schema<Config> = Schema.intersect([
         }),
         Schema.object({
           displayType: Schema.const(DisplayMode.EXPRESSION).required(),
-          baseNumber: Schema.number().default(6).min(1).max(9),
+          expressionType: Schema.union([ExpressionType.SIMPLE, ExpressionType.COMPLEX]).default(ExpressionType.SIMPLE),
         }),
       ]),
     ]),
@@ -159,7 +163,7 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'))
   ctx.i18n.define('en-US', require('./locales/en-US'))
 
-  const jrrp = ctx.command('jrrp')
+  const jrrp = ctx.command('jrrp', '今日人品')
     .action(async ({ session }) => {
       try {
         const dateForCalculation = new Date()
@@ -214,7 +218,7 @@ export async function apply(ctx: Context, config: Config) {
         await JrrpService.autoRecall(session, message)
       }
     })
-  jrrp.subcommand('.date <date:text>')
+  jrrp.subcommand('.date <date:text>', '查看指定日期人品')
     .action(async ({ session }, date) => {
       try {
         if (!date?.trim()) {
@@ -241,7 +245,7 @@ export async function apply(ctx: Context, config: Config) {
         await JrrpService.autoRecall(session, message)
       }
     })
-  jrrp.subcommand('.score <score:number>')
+  jrrp.subcommand('.score <score:number>', '查找指定分数日期')
     .action(async ({ session }, score) => {
       try {
         if (score < 0 || score > 100) {
@@ -276,7 +280,7 @@ export async function apply(ctx: Context, config: Config) {
         await JrrpService.autoRecall(session, message);
       }
     })
-  jrrp.subcommand('.rank')
+  jrrp.subcommand('.rank', '查看今日人品排行')
     .action(async ({ session }) => {
       try {
         const rankings = jrrpService.getTodayRanking()
@@ -303,7 +307,7 @@ export async function apply(ctx: Context, config: Config) {
     })
 
   if (config.calCode) {
-    jrrp.subcommand('.bind [code:string]')
+    jrrp.subcommand('.bind [code:string]', '绑定/解绑识别码')
       .action(async ({ session }, code) => {
         try {
           if (session.messageId) {
