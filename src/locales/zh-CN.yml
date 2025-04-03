@@ -38,6 +38,7 @@ commands:
       jrrp - 查看今日人品
       jrrp.date <日期> - 查看指定日期人品
       jrrp.score <分数> - 查找指定分数日期
+      jrrp.rank - 查看今日人品排行榜
       jrrp.bind [识别码] - 绑定/解绑识别码
     messages:
       result: "你今天的人品值是：{0}"
@@ -47,6 +48,12 @@ commands:
       found_date: "你的下一个 {0} 分会出现在 {1}"
       not_found: "在未来一年内你不会出现 {0} 分"
       invalid_number: "请输入 0-100 之间的整数"
+      rank_title: "今日人品排行榜"
+      rank_header: "排名  用户名  人品"
+      rank_item: "{0}. {1} - {2}分"
+      your_rank: "你的排名: {0}/{1}"
+      no_rank: "你今天还没有查询人品"
+      total_users: "今日共有 {0} 人查询了人品"
       range:
         1: "……（是百分制哦）"
         2: "？！不会吧……"

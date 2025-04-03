@@ -181,12 +181,35 @@ export async function apply(ctx: Context, config: Config) {
         if (fortuneResultText) {
           await session.send(fortuneResultText)
         }
+        // 获取分数并记录
+        const calCode = await jrrpService.getIdentificationCode(session.userId)
+        let userFortune: number
+        if (config.algorithm === JrrpAlgorithm.RANDOM_ORG && !calCode) {
+        } else {
+          // 手动记录分数
+          if (calCode) {
+            userFortune = JrrpCalculator.calculateJrrpWithCode(
+              calCode,
+              dateForCalculation,
+              config.calCode
+            )
+          } else {
+            const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${JrrpService.formatMonthDay(dateForCalculation)}`
+            userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
+              userDateSeed,
+              dateForCalculation,
+              config.algorithm === JrrpAlgorithm.RANDOM_ORG ? JrrpAlgorithm.BASIC : config.algorithm,
+              null,
+              config.calCode
+            )
+          }
+          jrrpService.recordUserScore(session.userId, userFortune)
+        }
       } catch (error) {
         const message = await session.send(session.text('commands.jrrp.messages.error'))
         await JrrpService.autoRecall(session, message)
       }
     })
-  // 日期子命令
   jrrp.subcommand('.date <date:text>')
     .action(async ({ session }, date) => {
       try {
@@ -246,6 +269,36 @@ export async function apply(ctx: Context, config: Config) {
       } catch (error) {
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await JrrpService.autoRecall(session, message);
+      }
+    })
+  jrrp.subcommand('.rank')
+    .action(async ({ session }) => {
+      try {
+        const rankings = jrrpService.getTodayRanking()
+        const topTen = rankings.slice(0, 10)
+        const totalUsers = jrrpService.getTodayUserCount()
+        const userRank = jrrpService.getUserRank(session.userId)
+        let response = `${session.text('commands.jrrp.messages.rank_title')}\n`
+        // 显示前10名
+        for (let i = 0; i < topTen.length; i++) {
+          const user = topTen[i]
+          const username = await session.bot.getUser(user.userId)
+          const name = username.name || user.userId
+          response += session.text('commands.jrrp.messages.rank_item', [i + 1, name, user.score]) + '\n'
+        }
+        // 显示用户自己的排名
+        if (userRank !== -1) {
+          response += '\n' + session.text('commands.jrrp.messages.your_rank', [userRank, totalUsers])
+        } else {
+          response += '\n' + session.text('commands.jrrp.messages.no_rank')
+        }
+        // 显示总用户数
+        response += '\n' + session.text('commands.jrrp.messages.total_users', [totalUsers])
+        await session.send(response)
+      } catch (error) {
+        console.error('Failed to get rank:', error)
+        const message = await session.send(session.text('commands.jrrp.messages.error'))
+        await JrrpService.autoRecall(session, message)
       }
     })
   jrrp.subcommand('.bind [code:string]')

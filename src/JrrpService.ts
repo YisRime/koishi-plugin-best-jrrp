@@ -182,6 +182,16 @@ export class JrrpService {
     const score = randomScore !== null ? randomScore :
       JrrpCalculator.calculateScoreWithAlgorithm(`${userId}-${new Date().toISOString().split('T')[0]}`, new Date(), JrrpAlgorithm.BASIC);
     // 保存分数和时间戳
+    this.recordUserScore(userId, score);
+    return score;
+  }
+
+  /**
+   * 记录用户的JRRP分数
+   * @param {string} userId - 用户ID
+   * @param {number} score - JRRP分数
+   */
+  recordUserScore(userId: string, score: number): void {
     if (!this.userData[userId]) {
       this.userData[userId] = {
         perfect_score: false,
@@ -193,7 +203,40 @@ export class JrrpService {
       this.userData[userId].timestamp = new Date().toISOString();
     }
     this.saveData();
-    return score;
+  }
+
+  /**
+   * 获取今日JRRP排行榜
+   * @returns {Array<{userId: string, score: number}>} 排行榜数据
+   */
+  getTodayRanking(): Array<{userId: string, score: number}> {
+    const todayRanks = Object.entries(this.userData)
+      .filter(([_, data]) => data.timestamp && this.isToday(data.timestamp) && data.randomScore !== undefined)
+      .map(([userId, data]) => ({
+        userId,
+        score: data.randomScore
+      }))
+      .sort((a, b) => b.score - a.score);
+    return todayRanks;
+  }
+
+  /**
+   * 获取用户在今日JRRP中的排名
+   * @param {string} userId - 用户ID
+   * @returns {number} 排名，如果未查询过则返回-1
+   */
+  getUserRank(userId: string): number {
+    const todayRanks = this.getTodayRanking();
+    const userIndex = todayRanks.findIndex(item => item.userId === userId);
+    return userIndex !== -1 ? userIndex + 1 : -1;
+  }
+
+  /**
+   * 获取今日查询JRRP的用户总数
+   * @returns {number} 用户总数
+   */
+  getTodayUserCount(): number {
+    return this.getTodayRanking().length;
   }
 
   /**

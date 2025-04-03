@@ -38,6 +38,7 @@ commands:
       jrrp - Check today's fortune
       jrrp.date <date> - Check fortune for a specific date
       jrrp.score <score> - Find dates with a specific score
+      jrrp.rank - View today's fortune ranking
       jrrp.bind [code] - Bind/unbind identification code
     messages:
       result: "Your fortune value today is: {0}"
@@ -47,6 +48,12 @@ commands:
       found_date: "Your next score of {0} will appear on {1}"
       not_found: "You won't get a score of {0} in the next year"
       invalid_number: "Please enter an integer between 0-100"
+      rank_title: "Today's Fortune Ranking"
+      rank_header: "Rank  Username  Fortune"
+      rank_item: "{0}. {1} - {2} pts"
+      your_rank: "Your rank: {0}/{1}"
+      no_rank: "You haven't checked your fortune today"
+      total_users: "Total {0} users checked their fortune today"
       range:
         1: "...(It's on a percentage scale)"
         2: "?! No way..."
