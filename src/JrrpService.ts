@@ -62,23 +62,6 @@ export class JrrpService {
   }
 
   /**
-   * 获取数据文件路径
-   * @returns {string} 数据文件的完整路径
-   */
-  getDataPath(): string {
-    return this.dataPath
-  }
-
-  /**
-   * 获取用户的识别码
-   * @param {string} userId - 用户ID
-   * @returns {Promise<string|undefined>} 用户的识别码，如果不存在则返回undefined
-   */
-  async getIdentificationCode(userId: string): Promise<string | undefined> {
-    return this.userData[userId]?.identification_code
-  }
-
-  /**
    * 为用户绑定识别码
    * @param {string} userId - 用户ID
    * @param {string} code - 要绑定的识别码
@@ -88,7 +71,7 @@ export class JrrpService {
     try {
       if (!code?.trim()) return false
       const formattedCode = code.trim().toUpperCase()
-      if (!this.validateIdentificationCode(formattedCode)) {
+      if (!/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(formattedCode)) {
         return false
       }
       if (!this.userData[userId]) {
@@ -118,15 +101,6 @@ export class JrrpService {
   }
 
   /**
-   * 检查用户是否首次获得满分
-   * @param {string} userId - 用户ID
-   * @returns {Promise<boolean>} 是否是首次满分
-   */
-  async isPerfectScoreFirst(userId: string): Promise<boolean> {
-    return !this.userData[userId]?.perfect_score
-  }
-
-  /**
    * 标记用户已获得过满分
    * @param {string} userId - 用户ID
    */
@@ -142,39 +116,22 @@ export class JrrpService {
   }
 
   /**
-   * 验证识别码格式是否正确
-   * @param {string} code - 要验证的识别码
-   * @returns {boolean} 是否符合格式要求
-   */
-  private validateIdentificationCode(code: string): boolean {
-    return /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(code)
-  }
-
-  /**
-   * 检查日期是否为今天
-   * @param {string} timestamp - ISO格式的时间戳
-   * @returns {boolean} 是否为今天
-   */
-  private isToday(timestamp: string): boolean {
-    if (!timestamp) return false;
-    const date = new Date(timestamp);
-    const today = new Date();
-    return date.getDate() === today.getDate() &&
-           date.getMonth() === today.getMonth() &&
-           date.getFullYear() === today.getFullYear();
-  }
-
-  /**
    * 获取用户的Random.org分数
    * @param {string} userId - 用户ID
+   * @param {string} [userName] - 用户名称
    * @returns {Promise<number>} 随机分数
    */
-  private async getRandomOrgScore(userId: string): Promise<number> {
-    // 检查用户是否已有今天的分数
+  private async getRandomOrgScore(userId: string, userName?: string): Promise<number> {
+    // 检查用户是否已有今天的分数和时间戳
     if (this.userData[userId]?.randomScore !== undefined &&
-        this.userData[userId]?.timestamp &&
-        this.isToday(this.userData[userId].timestamp)) {
-      return this.userData[userId].randomScore;
+        this.userData[userId]?.timestamp) {
+      const date = new Date(this.userData[userId].timestamp);
+      const today = new Date();
+      if (date.getDate() === today.getDate() &&
+          date.getMonth() === today.getMonth() &&
+          date.getFullYear() === today.getFullYear()) {
+        return this.userData[userId].randomScore;
+      }
     }
     // 请求新的随机数
     const randomScore = await JrrpCalculator.getRandomOrgScore(this.config.randomOrgApi);
@@ -182,7 +139,7 @@ export class JrrpService {
     const score = randomScore !== null ? randomScore :
       JrrpCalculator.calculateScoreWithAlgorithm(`${userId}-${new Date().toISOString().split('T')[0]}`, new Date(), JrrpAlgorithm.BASIC);
     // 保存分数和时间戳
-    this.recordUserScore(userId, score);
+    this.recordUserScore(userId, score, userName);
     return score;
   }
 
@@ -190,31 +147,43 @@ export class JrrpService {
    * 记录用户的JRRP分数
    * @param {string} userId - 用户ID
    * @param {number} score - JRRP分数
+   * @param {string} [name] - 用户名称
    */
-  recordUserScore(userId: string, score: number): void {
+  recordUserScore(userId: string, score: number, name?: string): void {
     if (!this.userData[userId]) {
       this.userData[userId] = {
         perfect_score: false,
         randomScore: score,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        name: name || userId
       };
     } else {
       this.userData[userId].randomScore = score;
       this.userData[userId].timestamp = new Date().toISOString();
+      // 更新名字
+      if (name) this.userData[userId].name = name;
     }
     this.saveData();
   }
 
   /**
    * 获取今日JRRP排行榜
-   * @returns {Array<{userId: string, score: number}>} 排行榜数据
+   * @returns {Array<{userId: string, score: number, name: string}>} 排行榜数据
    */
-  getTodayRanking(): Array<{userId: string, score: number}> {
+  getTodayRanking(): Array<{userId: string, score: number, name: string}> {
     const todayRanks = Object.entries(this.userData)
-      .filter(([_, data]) => data.timestamp && this.isToday(data.timestamp) && data.randomScore !== undefined)
+      .filter(([_, data]) => {
+        if (!data.timestamp || data.randomScore === undefined) return false;
+        const date = new Date(data.timestamp);
+        const today = new Date();
+        return date.getDate() === today.getDate() &&
+               date.getMonth() === today.getMonth() &&
+               date.getFullYear() === today.getFullYear();
+      })
       .map(([userId, data]) => ({
         userId,
-        score: data.randomScore
+        score: data.randomScore,
+        name: data.name || userId
       }))
       .sort((a, b) => b.score - a.score);
     return todayRanks;
@@ -229,14 +198,6 @@ export class JrrpService {
     const todayRanks = this.getTodayRanking();
     const userIndex = todayRanks.findIndex(item => item.userId === userId);
     return userIndex !== -1 ? userIndex + 1 : -1;
-  }
-
-  /**
-   * 获取今日查询JRRP的用户总数
-   * @returns {number} 用户总数
-   */
-  getTodayUserCount(): number {
-    return this.getTodayRanking().length;
   }
 
   /**
@@ -283,10 +244,18 @@ export class JrrpService {
     isDateCommand = false
   ): Promise<string | null> {
     try {
-      const monthDay = JrrpService.formatMonthDay(dateForCalculation)
+      const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`
       let userFortune: number;
-      const calCode = await this.getIdentificationCode(session.userId)
+      const calCode = this.userData[session.userId]?.identification_code;
       const isToday = dateForCalculation.toDateString() === new Date().toDateString();
+      // 获取用户名
+      let userName;
+      try {
+        const userInfo = await session.bot.getUser(session.userId);
+        userName = userInfo?.name;
+      } catch (e) {
+        userName = null;
+      }
       // 根据不同算法和条件计算分数
       if (this.config.algorithm === JrrpAlgorithm.RANDOM_ORG) {
         // 真随机算法模式
@@ -294,7 +263,7 @@ export class JrrpService {
           // 有识别码
           if (isToday && !isDateCommand) {
             // 今日人品：使用真随机 API
-            userFortune = await this.getRandomOrgScore(session.userId);
+            userFortune = await this.getRandomOrgScore(session.userId, userName);
           } else if (isToday && isDateCommand) {
             // 当天：使用识别码算法
             userFortune = JrrpCalculator.calculateJrrpWithCode(
@@ -314,7 +283,7 @@ export class JrrpService {
           // 无识别码
           if (isToday) {
             // 当天：使用真随机 API
-            userFortune = await this.getRandomOrgScore(session.userId);
+            userFortune = await this.getRandomOrgScore(session.userId, userName);
           } else {
             // 非当天：发送提示信息
             const message = await session.send(h('at', { id: session.userId }) +
@@ -360,7 +329,7 @@ export class JrrpService {
       let fortuneResultText = h('at', { id: session.userId }) +
         `${session.text('commands.jrrp.messages.result', [formattedFortune])}`
       // 添加额外消息
-      if (calCode && userFortune === 100 && await this.isPerfectScoreFirst(session.userId)) {
+      if (calCode && userFortune === 100 && !this.userData[session.userId]?.perfect_score) {
         await this.markPerfectScore(session.userId)
         fortuneResultText += session.text(this.config.number[userFortune]) +
           '\n' + session.text('commands.jrrp.messages.identification_mode.perfect_score_first')
@@ -490,18 +459,7 @@ export class JrrpService {
             await session.bot.deleteMessage(session.channelId, msgId)
           }
         }))
-      } catch (error) {
-        console.warn('Failed to execute auto recall:', error)
-      }
+      } catch (error) {}
     }, delay)
-  }
-
-  /**
-   * 格式化月日为MM-DD格式
-   * @param {Date} date - 日期对象
-   * @returns {string} 格式化后的月日字符串
-   */
-  static formatMonthDay(date: Date): string {
-    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   }
 }

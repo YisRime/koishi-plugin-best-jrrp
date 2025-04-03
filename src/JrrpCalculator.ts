@@ -47,31 +47,6 @@ export interface RandomOrgResponse {
  */
 export class JrrpCalculator {
   /**
-   * 获取指定日期在一年中的天数
-   * @param {Date} date - 日期对象
-   * @returns {number} 天数(1-366)
-   */
-  static getDayOfYear(date: Date): number {
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = date.getTime() - start.getTime();
-    const oneDay = 1000 * 60 * 60 * 24;
-    return Math.floor(diff / oneDay);
-  }
-
-  /**
-   * 计算字符串的64位哈希值
-   * @param {string} str - 输入字符串
-   * @returns {bigint} 哈希值
-   */
-  static getHash(str: string): bigint {
-    let hash = BigInt(5381)
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1))
-    }
-    return hash ^ BigInt('0xa98f501bc684032f')
-  }
-
-  /**
    * 使用识别码计算JRRP值
    * @param {string} code - 识别码
    * @param {Date} date - 日期对象
@@ -79,17 +54,27 @@ export class JrrpCalculator {
    * @returns {number} JRRP值
    */
   static calculateJrrpWithCode(code: string, date: Date, password: string): number {
-    const dayOfYear = this.getDayOfYear(date);
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date.getTime() - start.getTime();
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
     const year = date.getFullYear();
     const day = date.getDate();
-    const hash1 = this.getHash([
+    const getHash = (str: string): bigint => {
+      let hash = BigInt(5381)
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1))
+      }
+      return hash ^ BigInt('0xa98f501bc684032f')
+    };
+    const hash1 = getHash([
       'asdfgbn',
       String(dayOfYear),
       '12#3$45',
       String(year),
       'IUY'
     ].join(''));
-    const hash2 = this.getHash([
+    const hash2 = getHash([
       password,
       code,
       '0*8&6',
@@ -122,7 +107,6 @@ export class JrrpCalculator {
         },
         id: 1
       };
-
       const response = await fetch('https://api.random.org/json-rpc/4/invoke', {
         method: 'POST',
         headers: {
@@ -130,22 +114,15 @@ export class JrrpCalculator {
         },
         body: JSON.stringify(requestData)
       });
-
       if (!response.ok) {
-        console.error(`HTTP error! Status: ${response.status}`);
         return null;
       }
-
       const data: RandomOrgResponse = await response.json();
-
       if (data.error) {
-        console.error('Random.org API error:', data.error);
         return null;
       }
-
       return data.result?.random.data[0] ?? null;
     } catch (error) {
-      console.error('Failed to fetch random number from Random.org:', error);
       return null;
     }
   }
@@ -423,12 +400,11 @@ export class ExpressionGenerator {
    */
   formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
     try {
-      const isValidFoolDate = () => {
-        if (!foolConfig.date) return true
-        const [month, day] = foolConfig.date.split('-').map(Number)
-        return date.getMonth() + 1 === month && date.getDate() === day
-      }
-      if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate()) {
+      const isValidFoolDate = !foolConfig.date ||
+        (date.getMonth() + 1 === parseInt(foolConfig.date.split('-')[0]) &&
+         date.getDate() === parseInt(foolConfig.date.split('-')[1]));
+
+      if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate) {
         return score.toString()
       }
       // 每次生成表达式前清除缓存，确保随机性
@@ -452,7 +428,6 @@ export class ExpressionGenerator {
           return score.toString()
       }
     } catch (error) {
-      console.error('Error formatting score:', error)
       return score.toString()
     }
   }

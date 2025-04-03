@@ -11,10 +11,12 @@ export const name = 'best-jrrp'
  * @property {boolean} perfect_score - 是否已获得过满分
  * @property {number} [randomScore] - Random.org API获取的分数
  * @property {string} [timestamp] - 分数获取的时间戳
+ * @property {string} [name] - 用户名
  */
 export interface UserData {
   identification_code?: string
   perfect_score: boolean
+  name?: string
   randomScore?: number
   timestamp?: string
 }
@@ -161,7 +163,7 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session }) => {
       try {
         const dateForCalculation = new Date()
-        const monthDay = JrrpService.formatMonthDay(dateForCalculation)
+        const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`
         // 处理节日消息
         if (config.date?.[monthDay]) {
           const holidayMessage = session.text(config.date[monthDay])
@@ -182,7 +184,7 @@ export async function apply(ctx: Context, config: Config) {
           await session.send(fortuneResultText)
         }
         // 获取分数并记录
-        const calCode = await jrrpService.getIdentificationCode(session.userId)
+        const calCode = jrrpService['userData'][session.userId]?.identification_code
         let userFortune: number
         if (config.algorithm === JrrpAlgorithm.RANDOM_ORG && !calCode) {
         } else {
@@ -194,7 +196,7 @@ export async function apply(ctx: Context, config: Config) {
               config.calCode
             )
           } else {
-            const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${JrrpService.formatMonthDay(dateForCalculation)}`
+            const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`
             userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
               userDateSeed,
               dateForCalculation,
@@ -203,7 +205,9 @@ export async function apply(ctx: Context, config: Config) {
               config.calCode
             )
           }
-          jrrpService.recordUserScore(session.userId, userFortune)
+          // 获取用户名并记录
+          const username = await session.bot.getUser(session.userId)
+          jrrpService.recordUserScore(session.userId, userFortune, username.name)
         }
       } catch (error) {
         const message = await session.send(session.text('commands.jrrp.messages.error'))
@@ -245,7 +249,7 @@ export async function apply(ctx: Context, config: Config) {
           await JrrpService.autoRecall(session, message);
           return;
         }
-        const calCode = await jrrpService.getIdentificationCode(session.userId);
+        const calCode = jrrpService['userData'][session.userId]?.identification_code;
         const currentDate = new Date();
         for (let daysAhead = 1; daysAhead <= 365; daysAhead++) {
           const futureDate = new Date(currentDate);
@@ -276,15 +280,13 @@ export async function apply(ctx: Context, config: Config) {
       try {
         const rankings = jrrpService.getTodayRanking()
         const topTen = rankings.slice(0, 10)
-        const totalUsers = jrrpService.getTodayUserCount()
+        const totalUsers = rankings.length
         const userRank = jrrpService.getUserRank(session.userId)
         let response = `${session.text('commands.jrrp.messages.rank_title')}\n`
-        // 显示前10名
+        // 显示前10名，直接使用保存的用户名
         for (let i = 0; i < topTen.length; i++) {
           const user = topTen[i]
-          const username = await session.bot.getUser(user.userId)
-          const name = username.name || user.userId
-          response += session.text('commands.jrrp.messages.rank_item', [i + 1, name, user.score]) + '\n'
+          response += session.text('commands.jrrp.messages.rank_item', [i + 1, user.name, user.score]) + '\n'
         }
         // 显示用户自己的排名
         if (userRank !== -1) {
@@ -294,7 +296,6 @@ export async function apply(ctx: Context, config: Config) {
         }
         await session.send(response)
       } catch (error) {
-        console.error('Failed to get rank:', error)
         const message = await session.send(session.text('commands.jrrp.messages.error'))
         await JrrpService.autoRecall(session, message)
       }
@@ -310,7 +311,7 @@ export async function apply(ctx: Context, config: Config) {
           await jrrpService.removeIdentificationCode(session.userId)
           responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success')
         } else {
-          const existingCode = await jrrpService.getIdentificationCode(session.userId)
+          const existingCode = jrrpService['userData'][session.userId]?.identification_code
           const formattedCode = code.trim().toUpperCase()
           if (existingCode === formattedCode) {
             responseText = session.text('commands.jrrp.messages.identification_mode.already_bound')
@@ -327,7 +328,6 @@ export async function apply(ctx: Context, config: Config) {
         const message = await session.send(responseText)
         await JrrpService.autoRecall(session, message)
       } catch (error) {
-        console.error('Failed to handle identification code:', error)
         const message = await session.send(session.text('commands.jrrp.messages.error'))
         await JrrpService.autoRecall(session, message)
       }
