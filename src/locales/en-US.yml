@@ -39,7 +39,6 @@ commands:
       jrrp.date <date> - Check fortune for a specific date
       jrrp.score <score> - Find date for a specific score
       jrrp.rank - View today's fortune leaderboard
-      jrrp.bind [identification code] - Bind/unbind identification code
     messages:
       result: "Your fortune value today is: {0}"
       prompt: "Would you like to check your fortune today?"

@@ -74,7 +74,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.LINEAR),
       Schema.const(JrrpAlgorithm.RANDOM_ORG),
     ]).default(JrrpAlgorithm.BASIC),
-    calCode: Schema.string().default('CODE').role('secret'),
+    calCode: Schema.string().role('secret'),
     displayMode: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]).default(FoolMode.DISABLED),
   }).i18n({
     'zh-CN': require('./locales/zh-CN')._config,
@@ -176,20 +176,20 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
         let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, false)
-        // 处理零分确认
-        if (fortuneResultText === null) {
+        // 处理零分确认 - 需启用识别码模式
+        if (fortuneResultText === null && config.calCode) {
           fortuneResultText = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
         }
         if (fortuneResultText) {
           await session.send(fortuneResultText)
         }
         // 获取分数并记录
-        const calCode = jrrpService['userData'][session.userId]?.identification_code
+        const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null;
         let userFortune: number
         if (config.algorithm === JrrpAlgorithm.RANDOM_ORG && !calCode) {
         } else {
           // 手动记录分数
-          if (calCode) {
+          if (calCode && config.calCode) {
             userFortune = JrrpCalculator.calculateJrrpWithCode(
               calCode,
               dateForCalculation,
@@ -229,8 +229,8 @@ export async function apply(ctx: Context, config: Config) {
           return
         }
         let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, true)
-        // 处理零分确认
-        if (fortuneResultText === null) {
+        // 处理零分确认 - 需启用识别码模式
+        if (fortuneResultText === null && config.calCode) {
           fortuneResultText = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
         }
         if (fortuneResultText) {
@@ -249,7 +249,8 @@ export async function apply(ctx: Context, config: Config) {
           await JrrpService.autoRecall(session, message);
           return;
         }
-        const calCode = jrrpService['userData'][session.userId]?.identification_code;
+        // 只有当启用识别码模式时才获取识别码
+        const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null;
         const currentDate = new Date();
         for (let daysAhead = 1; daysAhead <= 365; daysAhead++) {
           const futureDate = new Date(currentDate);
@@ -300,36 +301,39 @@ export async function apply(ctx: Context, config: Config) {
         await JrrpService.autoRecall(session, message)
       }
     })
-  jrrp.subcommand('.bind [code:string]')
-    .action(async ({ session }, code) => {
-      try {
-        if (session.messageId) {
-          await JrrpService.autoRecall(session, session.messageId, 500)
-        }
-        let responseText: string
-        if (!code?.trim()) {
-          await jrrpService.removeIdentificationCode(session.userId)
-          responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success')
-        } else {
-          const existingCode = jrrpService['userData'][session.userId]?.identification_code
-          const formattedCode = code.trim().toUpperCase()
-          if (existingCode === formattedCode) {
-            responseText = session.text('commands.jrrp.messages.identification_mode.already_bound')
-          } else if (await jrrpService.bindIdentificationCode(session.userId, formattedCode)) {
-            responseText = session.text(
-              existingCode
-                ? 'commands.jrrp.messages.identification_mode.rebind_success'
-                : 'commands.jrrp.messages.identification_mode.bind_success'
-            )
-          } else {
-            responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code')
+
+  if (config.calCode) {
+    jrrp.subcommand('.bind [code:string]')
+      .action(async ({ session }, code) => {
+        try {
+          if (session.messageId) {
+            await JrrpService.autoRecall(session, session.messageId, 500)
           }
+          let responseText: string
+          if (!code?.trim()) {
+            await jrrpService.removeIdentificationCode(session.userId)
+            responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success')
+          } else {
+            const existingCode = jrrpService['userData'][session.userId]?.identification_code
+            const formattedCode = code.trim().toUpperCase()
+            if (existingCode === formattedCode) {
+              responseText = session.text('commands.jrrp.messages.identification_mode.already_bound')
+            } else if (await jrrpService.bindIdentificationCode(session.userId, formattedCode)) {
+              responseText = session.text(
+                existingCode
+                  ? 'commands.jrrp.messages.identification_mode.rebind_success'
+                  : 'commands.jrrp.messages.identification_mode.bind_success'
+              )
+            } else {
+              responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code')
+            }
+          }
+          const message = await session.send(responseText)
+          await JrrpService.autoRecall(session, message)
+        } catch (error) {
+          const message = await session.send(session.text('commands.jrrp.messages.error'))
+          await JrrpService.autoRecall(session, message)
         }
-        const message = await session.send(responseText)
-        await JrrpService.autoRecall(session, message)
-      } catch (error) {
-        const message = await session.send(session.text('commands.jrrp.messages.error'))
-        await JrrpService.autoRecall(session, message)
-      }
-    })
+      })
+  }
 }

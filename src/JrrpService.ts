@@ -246,7 +246,8 @@ export class JrrpService {
     try {
       const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`
       let userFortune: number;
-      const calCode = this.userData[session.userId]?.identification_code;
+      // 需启用识别码模式
+      const calCode = this.config.calCode ? this.userData[session.userId]?.identification_code : null;
       const isToday = dateForCalculation.toDateString() === new Date().toDateString();
       // 获取用户名
       let userName;
@@ -259,7 +260,7 @@ export class JrrpService {
       // 根据不同算法和条件计算分数
       if (this.config.algorithm === JrrpAlgorithm.RANDOM_ORG) {
         // 真随机算法模式
-        if (calCode) {
+        if (calCode && this.config.calCode) {
           // 有识别码
           if (isToday && !isDateCommand) {
             // 今日人品：使用真随机 API
@@ -294,7 +295,7 @@ export class JrrpService {
         }
       } else {
         // 基础算法模式
-        if (calCode) {
+        if (calCode && this.config.calCode) {
           // 有识别码：使用识别码算法
           userFortune = JrrpCalculator.calculateJrrpWithCode(
             calCode,
@@ -313,8 +314,8 @@ export class JrrpService {
           );
         }
       }
-      // 零分确认检查
-      if (!skipConfirm && userFortune === 0 && calCode) {
+      // 零分确认检查 - 需启用识别码模式
+      if (!skipConfirm && userFortune === 0 && calCode && this.config.calCode) {
         return null;
       }
       // 格式化分数
