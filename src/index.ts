@@ -288,12 +288,10 @@ export async function apply(ctx: Context, config: Config) {
         }
         // 显示用户自己的排名
         if (userRank !== -1) {
-          response += '\n' + session.text('commands.jrrp.messages.your_rank', [userRank, totalUsers])
+          response += session.text('commands.jrrp.messages.your_rank', [userRank, totalUsers])
         } else {
-          response += '\n' + session.text('commands.jrrp.messages.no_rank')
+          response += session.text('commands.jrrp.messages.no_rank')
         }
-        // 显示总用户数
-        response += '\n' + session.text('commands.jrrp.messages.total_users', [totalUsers])
         await session.send(response)
       } catch (error) {
         console.error('Failed to get rank:', error)
