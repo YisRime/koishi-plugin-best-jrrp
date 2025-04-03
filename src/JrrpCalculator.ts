@@ -43,7 +43,6 @@ export class JrrpCalculator {
     const dayOfYear = this.getDayOfYear(date);
     const year = date.getFullYear();
     const day = date.getDate();
-
     const hash1 = this.getHash([
       'asdfgbn',
       String(dayOfYear),
@@ -51,7 +50,6 @@ export class JrrpCalculator {
       String(year),
       'IUY'
     ].join(''));
-
     const hash2 = this.getHash([
       password,
       code,
@@ -59,12 +57,10 @@ export class JrrpCalculator {
       String(day),
       'kjhg'
     ].join(''));
-
     const divisorThree = BigInt(3);
     const mergedHash = (hash1 / divisorThree + hash2 / divisorThree);
     const normalizedHash = Math.abs(Number(mergedHash) / 527.0);
     const randomValue = Math.round(normalizedHash) % 1001;
-
     return randomValue >= 970 ? 100 : Math.round((randomValue / 969.0) * 99.0);
   }
 
@@ -73,7 +69,7 @@ export class JrrpCalculator {
    * @param {string} userDateSeed - 用户日期种子
    * @param {Date} date - 计算日期
    * @param {JrrpAlgorithm} algorithm - 算法选择
-   * @param {string} [identificationCode] - 用户识别码
+   * @param {string} [Code] - 用户识别码
    * @param {string} [password] - 配置的密码
    * @returns {number} 计算得出的分数(0-100)
    */
@@ -81,11 +77,11 @@ export class JrrpCalculator {
     userDateSeed: string,
     date: Date,
     algorithm: JrrpAlgorithm,
-    identificationCode?: string,
+    Code?: string,
     password?: string
   ): number {
-    if (identificationCode && password) {
-      return this.calculateJrrpWithCode(identificationCode, date, password)
+    if (Code && password) {
+      return this.calculateJrrpWithCode(Code, date, password)
     } else {
       switch (algorithm) {
         case JrrpAlgorithm.GAUSSIAN: {
@@ -94,14 +90,12 @@ export class JrrpCalculator {
             const randomFactor = Math.sin(hash) * 10000
             return randomFactor - Math.floor(randomFactor)
           }
-
           const toNormalLuck = (random: number): number => {
             const u1 = random
             const u2 = normalRandom(random.toString())
             const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
             return Math.min(100, Math.max(0, Math.round(z * 15 + 50)))
           }
-
           const dateWeight = (date.getDay() + 1) / 7
           const baseRandom = normalRandom(userDateSeed)
           const weightedRandom = (baseRandom + dateWeight) / 2
@@ -128,9 +122,7 @@ export class JrrpCalculator {
 export class ExpressionGenerator {
   private digitExpressions = new Map<number, string[]>()
   private expressionsInitialized = false
-
   constructor() {
-    // 初始化表达式映射
     this.expressionsInitialized = true;
   }
 
@@ -145,7 +137,6 @@ export class ExpressionGenerator {
     if (!this.expressionsInitialized) {
       const b = baseNumber;
       this.digitExpressions.set(b, [String(b)]);
-
       // 设置1-9的数字表达式
       for (let i = 1; i <= 9; i++) {
         if (i === b) continue;
@@ -153,11 +144,9 @@ export class ExpressionGenerator {
           this.digitExpressions.set(i, [String(i)]);
         }
       }
-
       this.digitExpressions.set(0, [`(${b} - ${b})`, `(${b} ^ ${b})`]);
       this.digitExpressions.set(10, [`((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`, `(${b} + ${b})`]);
-
-      // 设置特殊表达式，提供多个选择增加随机性
+      // 设置特殊表达式
       if (b !== 1) this.digitExpressions.set(1, [`(${b} / ${b})`, `(${b} % (${b} + ${b}))`]);
       if (b !== 2) this.digitExpressions.set(2, [`(${b} >> (${b} / ${b})`, `(${b} & ${b})`]);
       if (b !== 3) this.digitExpressions.set(3, [`(${b} / (${b} / ${b} << ${b} / ${b}))`, `(${b} - (${b} / ${b}))`]);
@@ -167,10 +156,8 @@ export class ExpressionGenerator {
       if (b !== 7) this.digitExpressions.set(7, [`(${b} + ${b} / ${b})`, `(${b} + ${b} - (${b} / ${b}))`]);
       if (b !== 8) this.digitExpressions.set(8, [`(${b} + ${b} / ${b} << ${b} / ${b})`, `(${b} | (${b} & ${b}))`]);
       if (b !== 9) this.digitExpressions.set(9, [`(${b} | (${b} >> ${b} / ${b}))`, `(${b} + ${b} - ${b} / ${b})`]);
-
       this.expressionsInitialized = true;
     }
-
     const expressions = this.digitExpressions.get(n);
     return expressions ? expressions[Math.floor(Math.random() * expressions.length)] : String(n);
   }
@@ -183,22 +170,18 @@ export class ExpressionGenerator {
    */
   generateDecimalExpression(target: number, baseNumber: number): string {
     if (target <= 10) return this.getDigitExpr(target, baseNumber)
-
     const cachedExpressions = this.digitExpressions.get(target);
     if (cachedExpressions && cachedExpressions.length > 0 && Math.random() > 0.3) {
       return cachedExpressions[Math.floor(Math.random() * cachedExpressions.length)];
     }
-
     let expr: string;
     if (target === 100) {
       expr = `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
     } else {
       const tens = Math.floor(target / 10);
       const ones = target % 10;
-
       // 增加随机性：随机选择策略
       const strategy = Math.floor(Math.random() * 3);
-
       if (strategy === 0 && target <= 20) {
         expr = `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
       } else if (strategy === 1 && ones === 0) {
@@ -215,14 +198,12 @@ export class ExpressionGenerator {
         }
       }
     }
-
     // 存储生成的表达式
     if (!cachedExpressions) {
       this.digitExpressions.set(target, [expr]);
     } else if (cachedExpressions.length < 3) {
       cachedExpressions.push(expr);
     }
-
     return expr;
   }
 
@@ -233,9 +214,7 @@ export class ExpressionGenerator {
    * @returns {string} 生成的表达式
    */
   generatePrimeFactorsExpression(target: number, baseNumber: number): string {
-
     if (target <= 10) return this.getDigitExpr(target, baseNumber);
-
     const expr = this.digitExpressions.get(target);
     if (expr) return expr[Math.floor(Math.random() * expr.length)];
     if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
@@ -264,7 +243,6 @@ export class ExpressionGenerator {
         ? `(${decompose(base)} + ${this.getDigitExpr(diff, baseNumber)})`
         : `(${decompose(base)} - ${this.getDigitExpr(-diff, baseNumber)})`;
     };
-
     return decompose(target);
   }
 
@@ -276,15 +254,12 @@ export class ExpressionGenerator {
    */
   generateMixedOperationsExpression(target: number, baseNumber: number): string {
     if (target <= 10) return this.getDigitExpr(target, baseNumber);
-
     const cached = this.digitExpressions.get(target);
     if (cached && cached.length > 0 && Math.random() > 0.3) {
       return cached[Math.floor(Math.random() * cached.length)];
     }
-
     const b = this.getDigitExpr(baseNumber, baseNumber);
     let expr = '';
-
     if (target === 0) {
       expr = `(${b} - ${b})`;
     } else if (target === 100) {
@@ -302,7 +277,6 @@ export class ExpressionGenerator {
           // 找到最接近的能被基数整除的数
           const quotient = Math.floor(target / baseNumber);
           const remainder = target % baseNumber;
-
           if (remainder === 0) {
             // 能整除的情况
             return `(${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)})`;
@@ -318,7 +292,6 @@ export class ExpressionGenerator {
           const maxShift = Math.floor(Math.log2(target));
           const base = 1 << maxShift;
           const remainder = target - base;
-
           if (remainder === 0) {
             return `(${b} << ${this.getDigitExpr(maxShift, baseNumber)})`;
           } else if (remainder < 0) {
@@ -344,17 +317,14 @@ export class ExpressionGenerator {
           return `(${this.generateMixedOperationsExpression(mid, baseNumber)} + ${this.generateMixedOperationsExpression(target - mid, baseNumber)})`;
         }
       ];
-
       expr = strategies[Math.floor(Math.random() * strategies.length)]();
     }
-
     // 存储生成的表达式
     if (!cached) {
       this.digitExpressions.set(target, [expr]);
     } else if (cached.length < 3) {
       cached.push(expr);
     }
-
     return expr;
   }
 
@@ -372,23 +342,19 @@ export class ExpressionGenerator {
         const [month, day] = foolConfig.date.split('-').map(Number)
         return date.getMonth() + 1 === month && date.getDate() === day
       }
-
       if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate()) {
         return score.toString()
       }
-
       // 每次生成表达式前清除缓存，确保随机性
       this.digitExpressions.clear();
       this.expressionsInitialized = false;
       this.expressionsInitialized = true;
-
-      switch (foolConfig.displayMode) {
+      switch (foolConfig.displayType) {
         case DisplayMode.BINARY:
           return score.toString(2)
         case DisplayMode.EXPRESSION:
           const baseNumber = foolConfig.baseNumber ?? 6
           const rand = Math.random()
-
           if (rand < 0.33) {
             return this.generateDecimalExpression(score, baseNumber)
           } else if (rand < 0.66) {

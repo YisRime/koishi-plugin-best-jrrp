@@ -1,4 +1,4 @@
-import { UserData, Config } from '.'
+import { UserData } from '.'
 import { JrrpCalculator, ExpressionGenerator } from './JrrpCalculator'
 import { h } from 'koishi'
 import * as fs from 'fs'
@@ -14,28 +14,25 @@ export class JrrpService {
   private dataDir: string
   private userData: Record<string, UserData>
   private expressionGenerator: ExpressionGenerator
-  private config: Config
+  private config: any
 
   /**
    * @constructor
    * @param {string} baseDir - 基础目录路径
-   * @param {Config} config - 插件配置
+   * @param {any} config - 插件配置
    */
-  constructor(baseDir: string, config: Config) {
+  constructor(baseDir: string, config: any) {
     this.dataDir = path.join(baseDir, 'data')
     this.dataPath = path.join(this.dataDir, 'jrrp.json')
     this.config = config
     this.expressionGenerator = new ExpressionGenerator()
-
     try {
       if (!fs.existsSync(this.dataDir)) {
         fs.mkdirSync(this.dataDir, { recursive: true })
       }
-
       if (!fs.existsSync(this.dataPath)) {
         fs.writeFileSync(this.dataPath, JSON.stringify({}))
       }
-
       this.userData = this.loadData()
     } catch (error) {
       console.error('Failed to initialize JRRP service:', error)
@@ -95,12 +92,10 @@ export class JrrpService {
   async bindIdentificationCode(userId: string, code: string): Promise<boolean> {
     try {
       if (!code?.trim()) return false
-
       const formattedCode = code.trim().toUpperCase()
       if (!this.validateIdentificationCode(formattedCode)) {
         return false
       }
-
       if (!this.userData[userId]) {
         this.userData[userId] = {
           perfect_score: false,
@@ -109,7 +104,6 @@ export class JrrpService {
       } else {
         this.userData[userId].identification_code = formattedCode
       }
-
       this.saveData()
       return true
     } catch (error) {
@@ -171,13 +165,12 @@ export class JrrpService {
    */
   getScoreMessage(score: number, monthDay: string, session: any): string {
     let message = ''
-
     // 检查特殊分数
-    if (this.config.specialMessages?.[score]) {
-      message = session.text(this.config.specialMessages[score])
+    if (this.config.number?.[score]) {
+      message = session.text(this.config.number[score])
     } else {
       // 检查分数区间
-      for (const [range, msgKey] of Object.entries(this.config.rangeMessages || {})) {
+      for (const [range, msgKey] of Object.entries(this.config.range || {})) {
         const [min, max] = range.split('-').map(Number)
         if (score >= min && score <= max) {
           message = session.text(msgKey)
@@ -186,10 +179,9 @@ export class JrrpService {
       }
     }
     // 添加节日消息
-    if (this.config.holidayMessages?.[monthDay]) {
-      message += '\n' + session.text(this.config.holidayMessages[monthDay])
+    if (this.config.date?.[monthDay]) {
+      message += '\n' + session.text(this.config.date[monthDay])
     }
-
     return message
   }
 
@@ -208,34 +200,37 @@ export class JrrpService {
     try {
       const monthDay = JrrpService.formatMonthDay(dateForCalculation)
       const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`
-      const identificationCode = await this.getIdentificationCode(session.userId)
+      const calCode = await this.getIdentificationCode(session.userId)
       const userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
         userDateSeed,
         dateForCalculation,
-        this.config.choice,
-        identificationCode,
-        this.config.identificationCode
+        this.config.algorithm,
+        calCode,
+        this.config.calCode
       )
-
       // 零分确认检查
-      if (!skipConfirm && identificationCode && userFortune === 0) {
+      if (!skipConfirm && calCode && userFortune === 0) {
         return null
       }
-
+      // 格式化分数
+      const foolConfig = {
+        type: this.config.displayMode,
+        date: this.config.displayDate,
+        displayType: this.config.displayType,
+        baseNumber: this.config.baseNumber
+      }
       // 格式化分数显示
-      const formattedFortune = this.expressionGenerator.formatScore(userFortune, dateForCalculation, this.config.fool)
+      const formattedFortune = this.expressionGenerator.formatScore(userFortune, dateForCalculation, foolConfig)
       let fortuneResultText = h('at', { id: session.userId }) +
         `${session.text('commands.jrrp.messages.result', [formattedFortune])}`
-
       // 添加额外消息
-      if (identificationCode && userFortune === 100 && await this.isPerfectScoreFirst(session.userId)) {
+      if (calCode && userFortune === 100 && await this.isPerfectScoreFirst(session.userId)) {
         await this.markPerfectScore(session.userId)
-        fortuneResultText += session.text(this.config.specialMessages[userFortune]) +
+        fortuneResultText += session.text(this.config.number[userFortune]) +
           '\n' + session.text('commands.jrrp.messages.identification_mode.perfect_score_first')
       } else {
         fortuneResultText += this.getScoreMessage(userFortune, monthDay, session)
       }
-
       return fortuneResultText
     } catch (error) {
       return session.text('commands.jrrp.messages.error')
@@ -250,7 +245,6 @@ export class JrrpService {
    */
   async handleZeroConfirmation(session: any, dateForCalculation: Date): Promise<string|null> {
     await session.send(session.text('commands.jrrp.messages.identification_mode.zero_prompt'))
-
     try {
       const response = await session.prompt(10000)
       if (!response || response.toLowerCase() !== 'y') {
@@ -286,21 +280,16 @@ export class JrrpService {
    */
   static parseDate(dateStr: string, defaultDate: Date): Date | null {
     if (!dateStr?.trim()) return null
-
     const normalized = dateStr.trim().replace(/[\s.\/]/g, '-').replace(/-+/g, '-')
     const fullDateRegex = /^(\d{1,4})-(\d{1,2})-(\d{1,2})$/
     const shortDateRegex = /^(\d{1,2})-(\d{1,2})$/
-
     let year: number, month: number, day: number
-
     const fullDateMatch = normalized.match(fullDateRegex)
     const shortDateMatch = normalized.match(shortDateRegex)
-
     if (fullDateMatch) {
       year = parseInt(fullDateMatch[1], 10)
       month = parseInt(fullDateMatch[2], 10)
       day = parseInt(fullDateMatch[3], 10)
-
       if (year < 100) {
         const currentYear = defaultDate.getFullYear()
         const threshold = (currentYear % 100 + 20) % 100
@@ -313,12 +302,10 @@ export class JrrpService {
     } else {
       return null
     }
-
     // 验证日期有效性
     if (month < 1 || month > 12 || day < 1 || day > 31) {
       return null
     }
-
     const date = new Date(year, month - 1, day)
     return (date.getFullYear() === year &&
             date.getMonth() === month - 1 &&
@@ -327,26 +314,22 @@ export class JrrpService {
 
   /**
    * 验证区间消息配置的有效性
-   * @param {Record<string, string>} rangeMessages - 区间消息配置
+   * @param {Record<string, string>} range - 区间消息配置
    * @throws {Error} 当配置无效时抛出错误
    */
-  static validateRangeMessages(rangeMessages: Record<string, string>): void {
+  static validateRangeMessages(range: Record<string, string>): void {
     const rangeIntervals: [number, number][] = [];
-
-    for (const rangeKey of Object.keys(rangeMessages)) {
+    for (const rangeKey of Object.keys(range)) {
       const [start, end] = rangeKey.split('-').map(Number);
       if (isNaN(start) || isNaN(end) || start > end || start < 0 || end > 100) {
         throw new Error(`Invalid range format: ${rangeKey}`);
       }
       rangeIntervals.push([start, end]);
     }
-
     rangeIntervals.sort((a, b) => a[0] - b[0]);
-
     if (rangeIntervals[0][0] !== 0 || rangeIntervals[rangeIntervals.length - 1][1] !== 100) {
       throw new Error('Ranges must completely cover 0 to 100');
     }
-
     for (let i = 1; i < rangeIntervals.length; i++) {
       if (rangeIntervals[i][0] !== rangeIntervals[i-1][1] + 1) {
         throw new Error(`Overlap or gap between ranges ${rangeIntervals[i-1][1]} and ${rangeIntervals[i][0]}`);
@@ -362,7 +345,6 @@ export class JrrpService {
    */
   static async autoRecall(session: any, message: any, delay = 10000): Promise<void> {
     if (!message) return
-
     setTimeout(async () => {
       try {
         const messages = Array.isArray(message) ? message : [message]
