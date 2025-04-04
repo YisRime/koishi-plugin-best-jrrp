@@ -6,12 +6,6 @@ export const name = 'best-jrrp'
 
 /**
  * 用户数据接口
- * @interface UserData
- * @property {string} [identification_code] - 用户的识别码
- * @property {boolean} [perfect_score] - 是否已获得过满分
- * @property {number} [randomScore] - Random.org API获取的分数
- * @property {string} [timestamp] - 分数获取的时间戳
- * @property {string} [name] - 用户名
  */
 export interface UserData {
   name?: string
@@ -19,6 +13,7 @@ export interface UserData {
   timestamp?: string
   perfect_score?: boolean
   identification_code?: string
+  algorithm?: string
 }
 
 /**
@@ -28,7 +23,7 @@ export const enum JrrpAlgorithm {
   BASIC = 'basic',
   GAUSSIAN = 'gaussian',
   LINEAR = 'linear',
-  RANDOM_ORG = 'random_org'
+  RANDOMORG = 'randomorg'
 }
 export const enum FoolMode {
   DISABLED = 'disabled',
@@ -51,7 +46,6 @@ export interface FoolConfig {
 
 /**
  * JRRP算法基本配置
- * @interface Config
  */
 export interface Config {
   algorithm: JrrpAlgorithm
@@ -68,7 +62,6 @@ export interface Config {
 
 /**
  * 插件配置Schema定义
- * @const Config
  */
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
@@ -76,7 +69,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.BASIC),
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
-      Schema.const(JrrpAlgorithm.RANDOM_ORG),
+      Schema.const(JrrpAlgorithm.RANDOMORG),
     ]).default(JrrpAlgorithm.BASIC),
     calCode: Schema.string().role('secret'),
     displayMode: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]).default(FoolMode.DISABLED),
@@ -117,7 +110,7 @@ export const Config: Schema<Config> = Schema.intersect([
       ]).hidden(),
     }),
     Schema.object({
-      algorithm: Schema.const(JrrpAlgorithm.RANDOM_ORG).required(),
+      algorithm: Schema.const(JrrpAlgorithm.RANDOMORG).required(),
       randomOrgApi: Schema.string().role('secret'),
     }),
   ]).i18n({
@@ -151,10 +144,41 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
+async function processJrrpCommand(
+  session: any,
+  jrrpService: JrrpService,
+  config: Config,
+  dateForCalculation: Date,
+  isDateCommand = false
+): Promise<void> {
+  try {
+    // 异步获取用户名
+    const userNamePromise = session.bot.getUser(session.userId)
+      .then(info => info?.name).catch(() => null)
+    // 计算结果
+    let fortuneResult = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, isDateCommand)
+    // 处理零分确认
+    if (fortuneResult.message === null && fortuneResult.score === 0 && config.calCode) {
+      fortuneResult = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
+    }
+    // 显示结果消息
+    if (fortuneResult.message) {
+      await session.send(fortuneResult.message)
+    }
+    // 记录当天数据
+    const isCurrentDay = dateForCalculation.toLocaleDateString('en-CA') === new Date().toLocaleDateString('en-CA')
+    if (isCurrentDay && fortuneResult.score >= 0) {
+      const userName = await userNamePromise
+      jrrpService.recordUserScore(session.userId, fortuneResult.score, userName, fortuneResult.algorithm)
+    }
+  } catch (error) {
+    const message = await session.send(session.text('commands.jrrp.messages.error'))
+    await JrrpService.autoRecall(session, message)
+  }
+}
+
 /**
  * 插件主函数
- * @param {Context} ctx - Koishi 上下文
- * @param {Config} config - 插件配置
  */
 export async function apply(ctx: Context, config: Config) {
   const jrrpService = new JrrpService(ctx.baseDir, config)
@@ -165,119 +189,72 @@ export async function apply(ctx: Context, config: Config) {
 
   const jrrp = ctx.command('jrrp', '今日人品')
     .action(async ({ session }) => {
-      try {
-        const dateForCalculation = new Date()
-        const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`
-        // 处理节日消息
-        if (config.date?.[monthDay]) {
-          const holidayMessage = session.text(config.date[monthDay])
-          const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'))
-          await JrrpService.autoRecall(session, promptMessage)
-          const response = await session.prompt(10000)
-          if (!response) {
-            await session.send(session.text('commands.jrrp.messages.cancel'))
-            return
-          }
+      const dateForCalculation = new Date()
+      const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`
+      // 处理节日消息
+      if (config.date?.[monthDay]) {
+        const messageParts = [
+          config.date[monthDay] ? session.text(config.date[monthDay]) : '',
+          session.text('commands.jrrp.messages.prompt')
+        ]
+        const promptMessage = await session.send(messageParts.filter(Boolean).join('\n'))
+        await JrrpService.autoRecall(session, promptMessage)
+        const response = await session.prompt(10000)
+        if (!response) {
+          await session.send(session.text('commands.jrrp.messages.cancel'))
+          return
         }
-        let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, false)
-        // 处理零分确认 - 需启用识别码模式
-        if (fortuneResultText === null && config.calCode) {
-          fortuneResultText = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
-        }
-        if (fortuneResultText) {
-          await session.send(fortuneResultText)
-        }
-        // 获取分数并记录
-        const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null;
-        let userFortune: number
-        if (config.algorithm === JrrpAlgorithm.RANDOM_ORG && !calCode) {
-        } else {
-          // 手动记录分数
-          if (calCode && config.calCode) {
-            userFortune = JrrpCalculator.calculateJrrpWithCode(
-              calCode,
-              dateForCalculation,
-              config.calCode
-            )
-          } else {
-            const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`
-            userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
-              userDateSeed,
-              dateForCalculation,
-              config.algorithm === JrrpAlgorithm.RANDOM_ORG ? JrrpAlgorithm.BASIC : config.algorithm,
-              null,
-              config.calCode
-            )
-          }
-          // 获取用户名并记录
-          const username = await session.bot.getUser(session.userId)
-          jrrpService.recordUserScore(session.userId, userFortune, username.name)
-        }
-      } catch (error) {
-        const message = await session.send(session.text('commands.jrrp.messages.error'))
-        await JrrpService.autoRecall(session, message)
       }
+      await processJrrpCommand(session, jrrpService, config, dateForCalculation)
     })
   jrrp.subcommand('.date <date:text>', '查看指定日期人品')
     .action(async ({ session }, date) => {
-      try {
-        if (!date?.trim()) {
-          const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
-          await JrrpService.autoRecall(session, message)
-          return
-        }
-        const dateForCalculation = JrrpService.parseDate(date, new Date())
-        if (!dateForCalculation) {
-          const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
-          await JrrpService.autoRecall(session, message)
-          return
-        }
-        let fortuneResultText = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, true)
-        // 处理零分确认 - 需启用识别码模式
-        if (fortuneResultText === null && config.calCode) {
-          fortuneResultText = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
-        }
-        if (fortuneResultText) {
-          await session.send(fortuneResultText)
-        }
-      } catch (error) {
-        const message = await session.send(session.text('commands.jrrp.messages.error'))
+      if (!date?.trim()) {
+        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
         await JrrpService.autoRecall(session, message)
+        return
       }
+      const dateForCalculation = JrrpService.parseDate(date, new Date())
+      if (!dateForCalculation) {
+        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
+        await JrrpService.autoRecall(session, message)
+        return
+      }
+      await processJrrpCommand(session, jrrpService, config, dateForCalculation, true)
     })
   jrrp.subcommand('.score <score:number>', '查找指定分数日期')
     .action(async ({ session }, score) => {
       try {
         if (score < 0 || score > 100) {
-          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
-          await JrrpService.autoRecall(session, message);
-          return;
+          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'))
+          await JrrpService.autoRecall(session, message)
+          return
         }
-        // 只有当启用识别码模式时才获取识别码
-        const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null;
-        const currentDate = new Date();
+        const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null
+        const currentDate = new Date()
         for (let daysAhead = 1; daysAhead <= 365; daysAhead++) {
-          const futureDate = new Date(currentDate);
-          futureDate.setDate(currentDate.getDate() + daysAhead);
-          const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-          const userDateSeed = `${session.userId}-${dateStr}`;
+          const futureDate = new Date(currentDate)
+          futureDate.setDate(currentDate.getDate() + daysAhead)
+          const dateStr = futureDate.toLocaleDateString('en-CA')
+          const userDateSeed = `${session.userId}-${dateStr}`
+          // 计算分数
           const calculatedScore = JrrpCalculator.calculateScoreWithAlgorithm(
             userDateSeed,
             futureDate,
-            config.algorithm === JrrpAlgorithm.RANDOM_ORG ? JrrpAlgorithm.BASIC : config.algorithm,
+            config.algorithm === JrrpAlgorithm.RANDOMORG ? JrrpAlgorithm.BASIC : config.algorithm,
             calCode,
             config.calCode
-          );
+          )
           if (calculatedScore === score) {
-            const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-            await session.send(session.text('commands.jrrp.messages.found_date', [score, formattedDate]));
-            return;
+            const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`
+            await session.send(session.text('commands.jrrp.messages.found_date', [score, formattedDate]))
+            return
           }
         }
-        await session.send(session.text('commands.jrrp.messages.not_found', [score]));
+        await session.send(session.text('commands.jrrp.messages.not_found', [score]))
       } catch (error) {
-        const message = await session.send(session.text('commands.jrrp.messages.error'));
-        await JrrpService.autoRecall(session, message);
+        const message = await session.send(session.text('commands.jrrp.messages.error'))
+        await JrrpService.autoRecall(session, message)
       }
     })
   jrrp.subcommand('.rank', '查看今日人品排行')
@@ -287,19 +264,18 @@ export async function apply(ctx: Context, config: Config) {
         const topTen = rankings.slice(0, 10)
         const totalUsers = rankings.length
         const userRank = jrrpService.getUserRank(session.userId)
-        let response = `${session.text('commands.jrrp.messages.rank_title')}\n`
-        // 显示前10名，直接使用保存的用户名
-        for (let i = 0; i < topTen.length; i++) {
-          const user = topTen[i]
-          response += session.text('commands.jrrp.messages.rank_item', [i + 1, user.name, user.score]) + '\n'
-        }
-        // 显示用户自己的排名
-        if (userRank !== -1) {
-          response += session.text('commands.jrrp.messages.your_rank', [userRank, totalUsers])
-        } else {
-          response += session.text('commands.jrrp.messages.no_rank')
-        }
-        await session.send(response)
+        const responseLines = [session.text('commands.jrrp.messages.rank_title')]
+        // 显示前10名
+        topTen.forEach((user, i) => {
+          responseLines.push(session.text('commands.jrrp.messages.rank_item', [i + 1, user.name, user.score]))
+        })
+        // 显示用户排名
+        responseLines.push(
+          userRank !== -1
+            ? session.text('commands.jrrp.messages.your_rank', [userRank, totalUsers])
+            : session.text('commands.jrrp.messages.no_rank')
+        )
+        await session.send(responseLines.join('\n'))
       } catch (error) {
         const message = await session.send(session.text('commands.jrrp.messages.error'))
         await JrrpService.autoRecall(session, message)
