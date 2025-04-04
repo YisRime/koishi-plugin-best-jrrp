@@ -10,7 +10,7 @@ _config:
   calCode: "计算密钥"
   randomOrgApi: "Random.org API"
   displayMode:
-    $desc: "愚人模式"
+    $desc: "娱乐模式"
     $inner:
       - "关闭"
       - "开启"

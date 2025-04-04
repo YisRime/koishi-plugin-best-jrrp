@@ -60,6 +60,20 @@ export class JrrpService {
   }
 
   /**
+   * 检查日期是否是当天
+   * @param {string} timestamp - 时间戳
+   * @returns {boolean} 是否是当天
+   */
+  private isToday(timestamp: string): boolean {
+    if (!timestamp) return false;
+    const date = new Date(timestamp);
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  }
+
+  /**
    * 为用户绑定识别码
    * @param {string} userId - 用户ID
    * @param {string} code - 要绑定的识别码
@@ -73,13 +87,9 @@ export class JrrpService {
         return false
       }
       if (!this.userData[userId]) {
-        this.userData[userId] = {
-          perfect_score: false,
-          identification_code: formattedCode
-        }
-      } else {
-        this.userData[userId].identification_code = formattedCode
+        this.userData[userId] = {}
       }
+      this.userData[userId].identification_code = formattedCode
       this.saveData()
       return true
     } catch (error) {
@@ -104,12 +114,9 @@ export class JrrpService {
    */
   async markPerfectScore(userId: string): Promise<void> {
     if (!this.userData[userId]) {
-      this.userData[userId] = {
-        perfect_score: true
-      }
-    } else {
-      this.userData[userId].perfect_score = true
+      this.userData[userId] = {}
     }
+    this.userData[userId].perfect_score = true
     this.saveData()
   }
 
@@ -123,12 +130,11 @@ export class JrrpService {
     // 检查用户是否已有今天的分数和时间戳
     if (this.userData[userId]?.randomScore !== undefined &&
         this.userData[userId]?.timestamp) {
-      const date = new Date(this.userData[userId].timestamp);
-      const today = new Date();
-      if (date.getDate() === today.getDate() &&
-          date.getMonth() === today.getMonth() &&
-          date.getFullYear() === today.getFullYear()) {
+      if (this.isToday(this.userData[userId].timestamp)) {
         return this.userData[userId].randomScore;
+      } else {
+        // 检测到不是当天，清理非当天数据但保留识别码和满分记录
+        this.cleanupNonPersistentData(userId);
       }
     }
     // 请求新的随机数
@@ -142,25 +148,43 @@ export class JrrpService {
   }
 
   /**
+   * 清理用户的非持久化数据，保留识别码和满分记录
+   * @param {string} userId - 用户ID
+   */
+  private cleanupNonPersistentData(userId: string): void {
+    if (!this.userData[userId]) return;
+    // 保留识别码和满分记录，删除其他字段
+    const identification_code = this.userData[userId].identification_code;
+    const perfect_score = this.userData[userId].perfect_score;
+    // 重置用户数据但保留需要保留的字段
+    this.userData[userId] = {};
+    // 只有当这些字段存在且有值时才重新添加
+    if (identification_code) {
+      this.userData[userId].identification_code = identification_code;
+    }
+    if (perfect_score) {
+      this.userData[userId].perfect_score = perfect_score;
+    }
+  }
+
+  /**
    * 记录用户的JRRP分数
    * @param {string} userId - 用户ID
    * @param {number} score - JRRP分数
    * @param {string} [name] - 用户名称
    */
   recordUserScore(userId: string, score: number, name?: string): void {
-    if (!this.userData[userId]) {
-      this.userData[userId] = {
-        perfect_score: false,
-        randomScore: score,
-        timestamp: new Date().toISOString(),
-        name: name || userId
-      };
-    } else {
-      this.userData[userId].randomScore = score;
-      this.userData[userId].timestamp = new Date().toISOString();
-      // 更新名字
-      if (name) this.userData[userId].name = name;
+    if (this.userData[userId]?.timestamp && !this.isToday(this.userData[userId].timestamp)) {
+      this.cleanupNonPersistentData(userId);
     }
+    if (!this.userData[userId]) {
+      this.userData[userId] = {};
+    }
+    // 更新分数和时间戳
+    this.userData[userId].randomScore = score;
+    this.userData[userId].timestamp = new Date().toISOString();
+    // 更新名字
+    if (name) this.userData[userId].name = name;
     this.saveData();
   }
 
@@ -172,11 +196,7 @@ export class JrrpService {
     const todayRanks = Object.entries(this.userData)
       .filter(([_, data]) => {
         if (!data.timestamp || data.randomScore === undefined) return false;
-        const date = new Date(data.timestamp);
-        const today = new Date();
-        return date.getDate() === today.getDate() &&
-               date.getMonth() === today.getMonth() &&
-               date.getFullYear() === today.getFullYear();
+        return this.isToday(data.timestamp);
       })
       .map(([userId, data]) => ({
         userId,
@@ -246,7 +266,7 @@ export class JrrpService {
       let userFortune: number;
       // 需启用识别码模式
       const calCode = this.config.calCode ? this.userData[session.userId]?.identification_code : null;
-      const isToday = dateForCalculation.toDateString() === new Date().toDateString();
+      const isCurrentDay = dateForCalculation.toDateString() === new Date().toDateString();
       // 获取用户名
       let userName;
       try {
@@ -255,62 +275,21 @@ export class JrrpService {
       } catch (e) {
         userName = null;
       }
-      // 根据不同算法和条件计算分数
-      if (this.config.algorithm === JrrpAlgorithm.RANDOM_ORG) {
-        // 真随机算法模式
-        if (calCode && this.config.calCode) {
-          // 有识别码
-          if (isToday && !isDateCommand) {
-            // 今日人品：使用真随机 API
-            userFortune = await this.getRandomOrgScore(session.userId, userName);
-          } else if (isToday && isDateCommand) {
-            // 当天：使用识别码算法
-            userFortune = JrrpCalculator.calculateJrrpWithCode(
-              calCode,
-              dateForCalculation,
-              this.config.calCode
-            );
-          } else {
-            // 其他日期：使用识别码算法
-            userFortune = JrrpCalculator.calculateJrrpWithCode(
-              calCode,
-              dateForCalculation,
-              this.config.calCode
-            );
-          }
-        } else {
-          // 无识别码
-          if (isToday) {
-            // 当天：使用真随机 API
-            userFortune = await this.getRandomOrgScore(session.userId, userName);
-          } else {
-            // 非当天：发送提示信息
-            const message = await session.send(h('at', { id: session.userId }) +
-              session.text('commands.jrrp.messages.random_org_only_today'));
-            await JrrpService.autoRecall(session, message);
-            return null;
-          }
-        }
-      } else {
-        // 基础算法模式
-        if (calCode && this.config.calCode) {
-          // 有识别码：使用识别码算法
-          userFortune = JrrpCalculator.calculateJrrpWithCode(
-            calCode,
-            dateForCalculation,
-            this.config.calCode
-          );
-        } else {
-          // 无识别码：使用相应基础算法
-          const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
-          userFortune = JrrpCalculator.calculateScoreWithAlgorithm(
-            userDateSeed,
-            dateForCalculation,
-            this.config.algorithm,
-            null,
-            this.config.calCode
-          );
-        }
+      // 计算用户分数
+      userFortune = await this.calculateUserFortune(
+        session.userId,
+        userName,
+        dateForCalculation,
+        isCurrentDay,
+        isDateCommand,
+        calCode
+      );
+      // 如果计算结果为null
+      if (userFortune === null) {
+        const message = await session.send(h('at', { id: session.userId }) +
+          session.text('commands.jrrp.messages.random_org_only_today'));
+        await JrrpService.autoRecall(session, message);
+        return null;
       }
       // 零分确认检查 - 需启用识别码模式
       if (!skipConfirm && userFortune === 0 && calCode && this.config.calCode) {
@@ -338,6 +317,73 @@ export class JrrpService {
       return fortuneResultText
     } catch (error) {
       return session.text('commands.jrrp.messages.error')
+    }
+  }
+
+  /**
+   * 计算用户的运势值
+   * @param {string} userId - 用户ID
+   * @param {string} userName - 用户名
+   * @param {Date} date - 日期
+   * @param {boolean} isToday - 是否为今天
+   * @param {boolean} isDateCommand - 是否为日期命令
+   * @param {string} calCode - 识别码
+   * @returns {Promise<number|null>} 运势值，无效情况返回null
+   */
+  private async calculateUserFortune(
+    userId: string,
+    userName: string,
+    date: Date,
+    isToday: boolean,
+    isDateCommand: boolean,
+    calCode: string
+  ): Promise<number|null> {
+    const monthDay = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    // 真随机算法模式
+    if (this.config.algorithm === JrrpAlgorithm.RANDOM_ORG) {
+      if (calCode && this.config.calCode) {
+        // 有识别码
+        if (isToday && !isDateCommand) {
+          // 今日人品：使用真随机 API
+          return await this.getRandomOrgScore(userId, userName);
+        } else {
+          // 使用识别码算法
+          return JrrpCalculator.calculateJrrpWithCode(
+            calCode,
+            date,
+            this.config.calCode
+          );
+        }
+      } else {
+        // 无识别码
+        if (isToday) {
+          // 当天：使用真随机 API
+          return await this.getRandomOrgScore(userId, userName);
+        } else {
+          // 非当天且无识别码：无法提供结果
+          return null;
+        }
+      }
+    } else {
+      // 基础算法模式
+      if (calCode && this.config.calCode) {
+        // 有识别码：使用识别码算法
+        return JrrpCalculator.calculateJrrpWithCode(
+          calCode,
+          date,
+          this.config.calCode
+        );
+      } else {
+        // 无识别码：使用相应基础算法
+        const userDateSeed = `${userId}-${date.getFullYear()}-${monthDay}`;
+        return JrrpCalculator.calculateScoreWithAlgorithm(
+          userDateSeed,
+          date,
+          this.config.algorithm,
+          null,
+          this.config.calCode
+        );
+      }
     }
   }
 

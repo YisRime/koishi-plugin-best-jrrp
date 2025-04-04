@@ -8,17 +8,17 @@ export const name = 'best-jrrp'
  * 用户数据接口
  * @interface UserData
  * @property {string} [identification_code] - 用户的识别码
- * @property {boolean} perfect_score - 是否已获得过满分
+ * @property {boolean} [perfect_score] - 是否已获得过满分
  * @property {number} [randomScore] - Random.org API获取的分数
  * @property {string} [timestamp] - 分数获取的时间戳
  * @property {string} [name] - 用户名
  */
 export interface UserData {
-  identification_code?: string
-  perfect_score: boolean
   name?: string
   randomScore?: number
   timestamp?: string
+  perfect_score?: boolean
+  identification_code?: string
 }
 
 /**

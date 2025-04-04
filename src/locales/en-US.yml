@@ -10,7 +10,7 @@ _config:
   calCode: "Calculation Key"
   randomOrgApi: "Random.org API"
   displayMode:
-    $desc: "Fool Mode"
+    $desc: "Play Mode"
     $inner:
       - "Off"
       - "On"
