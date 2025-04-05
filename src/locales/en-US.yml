@@ -44,7 +44,6 @@ commands:
       cancel: "Alright, have a nice day!"
       error: "Error calculating today's fortune"
       found_date: "Your next score of {0} will appear on {1}"
-      not_found: "You won't get a score of {0} in the next year"
       invalid_number: "Please enter an integer between 0-100"
       rank_title: "——Today's Fortune Ranking——"
       rank_item: "No.{0} {1} - {2} points"

@@ -1,6 +1,5 @@
 import { Context, Schema } from 'koishi'
 import { JrrpService } from './JrrpService'
-import { JrrpCalculator } from './JrrpCalculator'
 
 export const name = 'best-jrrp'
 
@@ -153,8 +152,7 @@ async function processJrrpCommand(
 ): Promise<void> {
   try {
     // 异步获取用户名
-    const userNamePromise = session.bot.getUser(session.userId)
-      .then(info => info?.name).catch(() => null)
+    const userNamePromise = session.bot.getUser(session.userId).then(info => info?.name).catch(() => null)
     // 计算结果
     let fortuneResult = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, isDateCommand)
     // 处理零分确认
@@ -230,18 +228,23 @@ export async function apply(ctx: Context, config: Config) {
           await JrrpService.autoRecall(session, message)
           return
         }
+        if (config.algorithm === JrrpAlgorithm.RANDOMORG) {
+          const message = await session.send(session.text('commands.jrrp.messages.random_org_only_today'))
+          await JrrpService.autoRecall(session, message)
+          return
+        }
         const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null
         const currentDate = new Date()
-        for (let daysAhead = 1; daysAhead <= 365; daysAhead++) {
+        for (let daysAhead = 1; daysAhead <= 3653; daysAhead++) {
           const futureDate = new Date(currentDate)
           futureDate.setDate(currentDate.getDate() + daysAhead)
           const dateStr = futureDate.toLocaleDateString('en-CA')
           const userDateSeed = `${session.userId}-${dateStr}`
           // 计算分数
-          const calculatedScore = JrrpCalculator.calculateScoreWithAlgorithm(
+          const calculatedScore = JrrpService.calculateScoreWithAlgorithm(
             userDateSeed,
             futureDate,
-            config.algorithm === JrrpAlgorithm.RANDOMORG ? JrrpAlgorithm.BASIC : config.algorithm,
+            config.algorithm,
             calCode,
             config.calCode
           )
@@ -251,7 +254,6 @@ export async function apply(ctx: Context, config: Config) {
             return
           }
         }
-        await session.send(session.text('commands.jrrp.messages.not_found', [score]))
       } catch (error) {
         const message = await session.send(session.text('commands.jrrp.messages.error'))
         await JrrpService.autoRecall(session, message)

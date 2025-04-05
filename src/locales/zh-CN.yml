@@ -44,7 +44,6 @@ commands:
       cancel: "好的，祝您今天愉快！"
       error: "计算今日人品时出错"
       found_date: "你的下一个 {0} 分会出现在 {1}"
-      not_found: "在未来一年内你不会出现 {0} 分"
       invalid_number: "请输入 0-100 之间的整数"
       rank_title: "——今日人品排行——"
       rank_item: "No.{0} {1} - {2}分"
