@@ -10,7 +10,7 @@ _config:
   calCode: "Calculation Key"
   randomOrgApi: "Random.org API"
   displayMode:
-    $desc: "Play Mode"
+    $desc: "Entertainment Mode"
     $inner:
       - "Off"
       - "On"
@@ -23,8 +23,8 @@ _config:
   expressionType:
     $desc: "Expression Type"
     $inner:
-      - "Simple Expressions"
-      - "Complex Expressions"
+      - "Simple Expression"
+      - "Complex Expression"
   range:
     $desc: "Ranges (Please modify text in localization, maximum 10 entries)"
     $inner: "Different ranges (0-100) corresponding prompts"
@@ -37,33 +37,33 @@ _config:
 
 commands:
   jrrp:
-    description: "Today's Fortune"
+    description: "Daily Luck Rating"
     messages:
-      result: "Your fortune value today is: {0}"
-      prompt: "Would you like to check your fortune today?"
+      result: "Your luck rating today is: {0}"
+      prompt: "Would you like to check your luck for today?"
       cancel: "Alright, have a nice day!"
-      error: "Error calculating today's fortune"
-      found_date: "Your next score of {0} will appear on {1}"
+      error: "Error calculating today's luck rating"
+      found_date: "Your next {0} points will appear on {1}"
       invalid_number: "Please enter an integer between 0-100"
-      rank_title: "——Today's Fortune Ranking——"
+      rank_title: "——Daily Luck Ranking——"
       rank_item: "No.{0} {1} - {2} points"
-      your_rank: "You are ranked #{0} (out of {1} people)"
-      no_rank: "You haven't checked your fortune today"
+      your_rank: "You are ranked {0}th (out of {1} people)"
+      no_rank: "You haven't checked your luck today yet"
       range:
-        1: "...(on a scale of 100)"
+        1: "...(based on a scale of 100)"
         2: "?! No way..."
         3: "! Ugh..."
         4: "! Barely acceptable...?"
         5: "! It's okay, it's okay."
-        6: "! Good luck today!"
-        7: "! Excellent reviews!"
+        6: "! Pretty good luck today!"
+        7: "! Outstanding!"
         8: "! Almost reached 100..."
         9: "Reserved"
         10: "Reserved"
       number:
-        1: "! Terrible reviews!"
-        2: "! It's fifty-fifty..."
-        3: "! 100! 100!!!!"
+        1: "! Terrible!"
+        2: "! 50/50..."
+        3: "! 100! 100!!!!!!"
         4: "Reserved"
         5: "Reserved"
         6: "Reserved"
@@ -85,11 +85,11 @@ commands:
       identification_mode:
         invalid_code: "Invalid identification code format! Please use the format XXXX-XXXX-XXXX-XXXX"
         bind_success: "Identification code bound successfully!"
-        unbind_success: "Identification code not bound / unbound successfully!"
+        unbind_success: "Identification code not bound / Unbinding successful!"
         already_bound: "You have already bound this identification code"
-        rebind_success: "Identification code re-bound successfully!"
-        perfect_score_first: "Hidden theme 'Lucky Pink' unlocked!\nGo to PLC2->More->Toolbox->Today's Fortune to confirm"
-        zero_prompt: "Before viewing the results, please agree to the following additional terms of use:\n1. I acknowledge and understand that PLC2's Today's Fortune feature has absolutely no bugs.\n2. PLC2 is not responsible for any indirect property damage (such as smashing computers, etc.) caused by using this software.\n(y/n)"
-      random_org_only_today: "Current fortune is provided by Random.org, only today's fortune is supported"
+        rebind_success: "Identification code rebinding successful!"
+        perfect_score_first: "Hidden theme 'Lucky Draw' unlocked!\nGo to PLC2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing the results, please agree to the following additional terms of service:\n1. I acknowledge and understand that the Daily Luck feature of PLC2 has absolutely no bugs.\n2. PLC2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
+      random_org_only_today: "Your daily luck rating is provided by Random.org and cannot be used with this command"
     errors:
       invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"

@@ -165,7 +165,7 @@ async function processJrrpCommand(
     }
     // 记录当天数据
     const isCurrentDay = dateForCalculation.toLocaleDateString('en-CA') === new Date().toLocaleDateString('en-CA')
-    if (isCurrentDay && fortuneResult.score >= 0) {
+    if (isCurrentDay && !isDateCommand && fortuneResult.score >= 0) {
       const userName = await userNamePromise
       jrrpService.recordUserScore(session.userId, fortuneResult.score, userName, fortuneResult.algorithm)
     }
