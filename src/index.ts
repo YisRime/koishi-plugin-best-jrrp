@@ -355,8 +355,8 @@ export function apply(ctx: Context, config: Config) {
           const userRank = allRanks.findIndex(item => item.userId === session.userId);
           // 检查用户是否在排行榜中
           message += userRank >= 0
-            ? `\n你位于第${userRank + 1}名（共${allRanks.length}人）`
-            : '\n你今天还没有获取人品值';
+            ? `你位于第${userRank + 1}名（共${allRanks.length}人）`
+            : '你还没有获取今日人品';
         }
         return message;
       });
