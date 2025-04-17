@@ -1,321 +1,377 @@
 import { Context, Schema } from 'koishi'
-import { JrrpService } from './JrrpService'
+import { FortuneCalc, FortuneResult } from './fortunecalc'
+import { FortuneStore } from './fortunestore'
+import { MsgBuilder, ScoreDisplayFormat } from './msgbuilder'
+import { CodeStore } from './codestore'
 
 export const name = 'best-jrrp'
 
 /**
- * 用户数据接口
+ * 人品计算算法枚举
+ * @enum {string}
  */
-export interface UserData {
-  name?: string
-  randomScore?: number
-  timestamp?: string
-  perfect_score?: boolean
-  identification_code?: string
-  algorithm?: string
+export const enum JrrpAlgorithm {
+  /** 正态分布算法 */
+  GAUSSIAN = 'gaussian',
+  /** 线性同余算法 */
+  LINEAR = 'linear',
+  /** Random.org真随机API */
+  RANDOMORG = 'randomorg'
+}
+
+/**
+ * 区间消息接口
+ * @interface RangeMessage
+ */
+export interface RangeMessage {
+  /** 区间最小值 */
+  min: number
+  /** 区间最大值 */
+  max: number
+  /** 对应消息文本 */
+  message: string
+}
+
+/**
+ * 特殊消息接口
+ * @interface SpecialMessage
+ */
+export interface SpecialMessage {
+  /** 触发条件（日期或分数） */
+  condition: string | number
+  /** 对应消息文本 */
+  message: string
 }
 
 /**
  * 插件配置接口
- */
-export const enum JrrpAlgorithm {
-  BASIC = 'basic',
-  GAUSSIAN = 'gaussian',
-  LINEAR = 'linear',
-  RANDOMORG = 'randomorg'
-}
-export const enum FoolMode {
-  DISABLED = 'disabled',
-  ENABLED = 'enabled'
-}
-export const enum DisplayMode {
-  BINARY = 'binary',
-  EXPRESSION = 'expression'
-}
-export const enum ExpressionType {
-  SIMPLE = 'simple',
-  COMPLEX = 'complex'
-}
-export interface FoolConfig {
-  type: FoolMode
-  date?: string
-  displayType?: DisplayMode
-  expressionType?: ExpressionType
-}
-
-/**
- * JRRP算法基本配置
+ * @interface Config
  */
 export interface Config {
+  /** 计算算法 */
   algorithm: JrrpAlgorithm
-  calCode: string
-  displayMode: FoolMode
-  displayDate?: string
-  displayType?: DisplayMode
-  expressionType?: ExpressionType
-  range?: Record<string, string>
-  number?: Record<number, string>
-  date?: Record<string, string>
-  randomOrgApi?: string
+  /** Random.org API密钥 */
+  apiKey?: string
+  /** 识别码算法密钥（6段，使用|分隔） */
+  codeHashSecret?: string
+  /** 消息模板 */
+  template: string
+  /** 区间消息列表 */
+  rangeMessages: Array<RangeMessage>
+  /** 特殊消息列表 */
+  specialMessages: Array<SpecialMessage>
+  /** 是否启用分数格式化 */
+  enableScoreFormat: boolean
+  /** 格式化启用日期 */
+  formatDate: string
+  /** 分数格式化样式 */
+  scoreFormat: ScoreDisplayFormat
+  /** 是否启用区间消息 */
+  enableRange: boolean
+  /** 是否启用特殊消息 */
+  enableSpecial: boolean
+  /** 是否启用日期查询 */
+  enableDate: boolean
+  /** 是否启用分数预测 */
+  enableScore: boolean
+  /** 是否启用排行榜 */
+  enableRank: boolean
+  /** 是否启用识别码功能 */
+  enableCode: boolean
 }
 
-/**
- * 插件配置Schema定义
- */
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     algorithm: Schema.union([
-      Schema.const(JrrpAlgorithm.BASIC),
-      Schema.const(JrrpAlgorithm.GAUSSIAN),
-      Schema.const(JrrpAlgorithm.LINEAR),
-      Schema.const(JrrpAlgorithm.RANDOMORG),
-    ]).default(JrrpAlgorithm.BASIC),
-    calCode: Schema.string().role('secret'),
-    displayMode: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]).default(FoolMode.DISABLED),
-  }).i18n({
-    'zh-CN': require('./locales/zh-CN')._config,
-    'en-US': require('./locales/en-US')._config,
-  }),
-  Schema.union([
-    Schema.object({
-      displayMode: Schema.const(FoolMode.DISABLED),
-    }),
-    Schema.intersect([
-      Schema.object({
-        displayMode: Schema.const(FoolMode.ENABLED).required(),
-        displayDate: Schema.string().default('4-1'),
-        displayType: Schema.union([DisplayMode.BINARY, DisplayMode.EXPRESSION]).default(DisplayMode.BINARY),
-      }),
-      Schema.union([
-        Schema.object({
-          displayType: Schema.const(DisplayMode.BINARY),
-        }),
-        Schema.object({
-          displayType: Schema.const(DisplayMode.EXPRESSION).required(),
-          expressionType: Schema.union([ExpressionType.SIMPLE, ExpressionType.COMPLEX]).default(ExpressionType.SIMPLE),
-        }),
-      ]),
-    ]),
-  ]).i18n({
-    'zh-CN': require('./locales/zh-CN')._config,
-    'en-US': require('./locales/en-US')._config,
-  }),
-  Schema.union([
-    Schema.object({
-      algorithm: Schema.union([
-        Schema.const(JrrpAlgorithm.BASIC),
-        Schema.const(JrrpAlgorithm.GAUSSIAN),
-        Schema.const(JrrpAlgorithm.LINEAR),
-      ]).hidden(),
-    }),
-    Schema.object({
-      algorithm: Schema.const(JrrpAlgorithm.RANDOMORG).required(),
-      randomOrgApi: Schema.string().role('secret'),
-    }),
-  ]).i18n({
-    'zh-CN': require('./locales/zh-CN')._config,
-    'en-US': require('./locales/en-US')._config,
-  }),
+      Schema.const(JrrpAlgorithm.GAUSSIAN).description('算法 - 正态分布'),
+      Schema.const(JrrpAlgorithm.LINEAR).description('算法 - 线性同余'),
+      Schema.const(JrrpAlgorithm.RANDOMORG).description('真随机 - Random.org')
+    ]).default(JrrpAlgorithm.LINEAR).description('计算模式'),
+    apiKey: Schema.string().description('密钥 - Random.org API').role('secret'),
+    codeHashSecret: Schema.string().description('密钥 - 识别码算法').role('secret')
+  }).description('算法配置'),
   Schema.object({
-    range: Schema.dict(String).default({
-      '0-10': 'commands.jrrp.messages.range.1',
-      '11-19': 'commands.jrrp.messages.range.2',
-      '20-39': 'commands.jrrp.messages.range.3',
-      '40-49': 'commands.jrrp.messages.range.4',
-      '50-64': 'commands.jrrp.messages.range.5',
-      '65-89': 'commands.jrrp.messages.range.6',
-      '90-97': 'commands.jrrp.messages.range.7',
-      '98-100': 'commands.jrrp.messages.range.8'
-    }),
-    number: Schema.dict(String).default({
-      0: 'commands.jrrp.messages.number.1',
-      50: 'commands.jrrp.messages.number.2',
-      100: 'commands.jrrp.messages.number.3'
-    }),
-    date: Schema.dict(String).default({
-      '01-01': 'commands.jrrp.messages.date.1',
-      '04-01': 'commands.jrrp.messages.date.2',
-      '12-25': 'commands.jrrp.messages.date.3'
-    })
-  }).i18n({
-    'zh-CN': require('./locales/zh-CN')._config,
-    'en-US': require('./locales/en-US')._config,
-  }),
+    enableDate: Schema.boolean().description('启用日期查询').default(true),
+    enableScore: Schema.boolean().description('启用分数预测').default(true),
+    enableRank: Schema.boolean().description('启用排行榜').default(true),
+    enableCode: Schema.boolean().description('启用识别码').default(false)
+  }).description('指令配置'),
+  Schema.object({
+    enableScoreFormat: Schema.boolean().description('启用格式化显示').default(true),
+    formatDate: Schema.string().description('启用日期（留空保持开启）').pattern(/^\d{1,2}-\d{1,2}$/).default('4-1'),
+    scoreFormat: Schema.union([
+      Schema.const('binary').description('二进制'),
+      Schema.const('octal').description('八进制'),
+      Schema.const('hex').description('十六进制'),
+      Schema.const('simple').description('简单表达式'),
+      Schema.const('complex').description('复杂表达式')
+    ]).description('格式化样式').default('simple')
+  }).description('分数显示配置'),
+  Schema.object({
+    template: Schema.string().description('消息内容，支持占位符：{at}、{username}、{score}、{message}、{image:URL}')
+      .default('{at}你今天的人品值是：{score}{message}').role('textarea'),
+    enableRange: Schema.boolean().description('启用区间消息').default(true),
+    rangeMessages: Schema.array(Schema.object({
+      min: Schema.number().description('区间最小值').min(0).max(100).default(0),
+      max: Schema.number().description('区间最大值').min(0).max(100).default(100),
+      message: Schema.string().description('对应消息')
+    })).description('区间消息配置').default([
+      { min: 0, max: 10, message: '……（是百分制哦）' },
+      { min: 11, max: 19, message: '？！不会吧……' },
+      { min: 20, max: 39, message: '！呜……' },
+      { min: 40, max: 49, message: '！勉强还行吧……？' },
+      { min: 50, max: 64, message: '！还行啦，还行啦。' },
+      { min: 65, max: 89, message: '！今天运气不错呢！' },
+      { min: 90, max: 97, message: '！好评如潮！' },
+      { min: 98, max: 100, message: '！差点就到 100 了呢……' }
+    ]).role('table'),
+    enableSpecial: Schema.boolean().description('启用特殊消息').default(true),
+    specialMessages: Schema.array(Schema.object({
+      condition: Schema.string().description('触发条件（人品值或日期）').pattern(/^(\d+|\d{1,2}-\d{1,2})$/),
+      message: Schema.string().description('对应消息')
+    })).description('特殊消息配置').default([
+      { condition: '0', message: '！差评如潮！' },
+      { condition: '50', message: '！五五开……' },
+      { condition: '100', message: '！100！100！！！！！' },
+      { condition: '1-1', message: '！新年快乐！' },
+      { condition: '4-1', message: '！愚人节快乐！' },
+      { condition: '12-25', message: '！圣诞快乐！' }
+    ]).role('table'),
+  }).description('消息配置')
 ])
 
-async function processJrrpCommand(
-  session: any,
-  jrrpService: JrrpService,
-  config: Config,
-  dateForCalculation: Date,
-  isDateCommand = false
-): Promise<void> {
-  try {
-    // 异步获取用户名
-    const userNamePromise = session.bot.getUser(session.userId).then(info => info?.name).catch(() => null)
-    // 计算结果
-    let fortuneResult = await jrrpService.formatJrrpMessage(session, dateForCalculation, false, isDateCommand)
-    // 处理零分确认
-    if (fortuneResult.message === null && fortuneResult.score === 0 && config.calCode) {
-      fortuneResult = await jrrpService.handleZeroConfirmation(session, dateForCalculation)
-    }
-    // 显示结果消息
-    if (fortuneResult.message) {
-      await session.send(fortuneResult.message)
-    }
-    // 记录当天数据
-    const isCurrentDay = dateForCalculation.toLocaleDateString('en-CA') === new Date().toLocaleDateString('en-CA')
-    if (isCurrentDay && !isDateCommand && fortuneResult.score >= 0) {
-      const userName = await userNamePromise
-      jrrpService.recordUserScore(session.userId, fortuneResult.score, userName, fortuneResult.algorithm)
-    }
-  } catch (error) {
-    const message = await session.send(session.text('commands.jrrp.messages.error'))
-    await JrrpService.autoRecall(session, message)
+/**
+ * 解析日期字符串为日期对象
+ * @param {string} dateStr - 日期字符串，支持多种格式
+ * @returns {Date|null} 解析后的日期对象，无效时返回null
+ */
+function parseDate(dateStr: string): Date | null {
+  const pattern = /^(?:(\d{1,2})|(\d{2})|(\d{4}))[-\.\/](\d{1,2})(?:[-\.\/](\d{1,2}))?$/;
+  const match = dateStr.match(pattern);
+  // 检查是否匹配日期格式
+  if (!match) return null;
+
+  const currentYear = new Date().getFullYear();
+  const currentCentury = Math.floor(currentYear / 100) * 100;
+  let year = currentYear;
+  let month: number, day: number;
+  // 确定日期格式并解析
+  if (match[1] && !match[5]) {
+    month = parseInt(match[1], 10) - 1;
+    day = parseInt(match[4], 10);
+  } else if (match[2]) {
+    year = currentCentury + parseInt(match[2], 10);
+    month = parseInt(match[4], 10) - 1;
+    day = parseInt(match[5], 10);
+  } else if (match[3]) {
+    year = parseInt(match[3], 10);
+    month = parseInt(match[4], 10) - 1;
+    day = parseInt(match[5], 10);
+  } else {
+    month = parseInt(match[4], 10) - 1;
+    day = parseInt(match[5], 10);
   }
+
+  const targetDate = new Date(year, month, day);
+  return isNaN(targetDate.getTime()) ? null : targetDate;
+}
+
+/**
+ * 自动撤回消息
+ * @param {any} session - 会话对象
+ * @param {any} message - 消息或消息数组
+ * @param {number} delay - 延迟时间(ms)，默认10秒
+ * @returns {Promise<void>}
+ */
+async function autoRecall(session: any, message: any, delay = 10000): Promise<void> {
+  if (!message) return;
+  setTimeout(async () => {
+    try {
+      const messages = Array.isArray(message) ? message : [message];
+      for (const msg of messages) {
+        const msgId = typeof msg === 'string' ? msg : msg?.id;
+        // 检查消息ID和会话信息是否有效
+        if (msgId && session.bot && session.channelId) {
+          await session.bot.deleteMessage(session.channelId, msgId);
+        }
+      }
+    } catch (error) {}
+  }, delay);
 }
 
 /**
  * 插件主函数
+ * @param {Context} ctx - Koishi上下文
+ * @param {Config} config - 插件配置
  */
-export async function apply(ctx: Context, config: Config) {
-  const jrrpService = new JrrpService(ctx.baseDir, config)
-  JrrpService.validateRangeMessages(config.range)
+export function apply(ctx: Context, config: Config) {
+  const calc = new FortuneCalc(config.algorithm, config.apiKey)
+  const store = new FortuneStore(ctx.baseDir)
+  const builder = new MsgBuilder({
+    rangeMessages: config.rangeMessages,
+    specialMessages: config.specialMessages,
+    template: config.template,
+    display: {
+      enabled: config.enableScoreFormat,
+      date: config.formatDate,
+      mode: config.scoreFormat
+    },
+    enableRange: config.enableRange,
+    enableSpecial: config.enableSpecial
+  })
 
-  ctx.i18n.define('zh-CN', require('./locales/zh-CN'))
-  ctx.i18n.define('en-US', require('./locales/en-US'))
+  /**
+   * 检查用户ID是否有效
+   * @param {any} session - 会话对象
+   * @returns {Promise<boolean>} 用户ID是否有效
+   */
+  const checkUserId = async (session): Promise<boolean> => {
+    if (!session.userId) {
+      autoRecall(session, await session.send('无法获取用户信息'));
+      return false;
+    }
+    return true;
+  };
 
-  const jrrp = ctx.command('jrrp', '今日人品')
+  const jrrp = ctx.command('jrrp', '获取今日人品')
+    .usage('查询你今天的人品值')
     .action(async ({ session }) => {
-      const dateForCalculation = new Date()
-      const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`
-      // 处理节日消息
-      if (config.date?.[monthDay]) {
-        const messageParts = [
-          config.date[monthDay] ? session.text(config.date[monthDay]) : '',
-          session.text('commands.jrrp.messages.prompt')
-        ]
-        const promptMessage = await session.send(messageParts.filter(Boolean).join('\n'))
-        await JrrpService.autoRecall(session, promptMessage)
-        const response = await session.prompt(10000)
-        if (!response) {
-          await session.send(session.text('commands.jrrp.messages.cancel'))
-          return
+      if (!await checkUserId(session)) return;
+      // 先查询缓存
+      const cachedResult = await store.getFortune(session.userId);
+      let result: FortuneResult;
+      let needSave = false;
+      // 检查是否有有效缓存
+      if (cachedResult) {
+        // 检查是否使用Random.org或算法是否一致
+        if (config.algorithm === JrrpAlgorithm.RANDOMORG ||
+            cachedResult.algorithm === config.algorithm) {
+          result = {
+            score: cachedResult.score,
+            actualAlgorithm: cachedResult.algorithm as JrrpAlgorithm
+          };
+        } else {
+          // 本地算法不同，重新计算
+          result = await calc.calculate(
+            session.userId, new Date().toLocaleDateString()
+          );
+          needSave = true;
         }
+      } else {
+        // 无缓存，计算新结果
+        result = await calc.calculate(
+          session.userId, new Date().toLocaleDateString()
+        );
+        needSave = true;
       }
-      await processJrrpCommand(session, jrrpService, config, dateForCalculation)
-    })
-  jrrp.subcommand('.date <date:text>', '查看指定日期人品')
-    .action(async ({ session }, date) => {
-      if (!date?.trim()) {
-        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
-        await JrrpService.autoRecall(session, message)
-        return
+      // 生成消息并保存结果
+      const message = builder.build(result.score, session.userId, session.username || session.userId);
+      if (needSave) {
+        store.save(session.userId, {
+          username: session.username || session.userId,
+          score: result.score,
+          algorithm: result.actualAlgorithm,
+          timestamp: Date.now()
+        });
       }
-      const dateForCalculation = JrrpService.parseDate(date, new Date())
-      if (!dateForCalculation) {
-        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'))
-        await JrrpService.autoRecall(session, message)
-        return
-      }
-      await processJrrpCommand(session, jrrpService, config, dateForCalculation, true)
-    })
-  jrrp.subcommand('.score <score:number>', '查找指定分数日期')
-    .action(async ({ session }, score) => {
-      try {
-        if (score < 0 || score > 100) {
-          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'))
-          await JrrpService.autoRecall(session, message)
-          return
-        }
-        if (config.algorithm === JrrpAlgorithm.RANDOMORG) {
-          const message = await session.send(session.text('commands.jrrp.messages.random_org_only_today'))
-          await JrrpService.autoRecall(session, message)
-          return
-        }
-        const calCode = config.calCode ? jrrpService['userData'][session.userId]?.identification_code : null
-        const currentDate = new Date()
-        for (let daysAhead = 1; daysAhead <= 3653; daysAhead++) {
-          const futureDate = new Date(currentDate)
-          futureDate.setDate(currentDate.getDate() + daysAhead)
-          const dateStr = futureDate.toLocaleDateString('en-CA')
-          const userDateSeed = `${session.userId}-${dateStr}`
-          // 计算分数
-          const calculatedScore = JrrpService.calculateScoreWithAlgorithm(
-            userDateSeed,
-            futureDate,
-            config.algorithm,
-            calCode,
-            config.calCode
-          )
-          if (calculatedScore === score) {
-            const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`
-            await session.send(session.text('commands.jrrp.messages.found_date', [score, formattedDate]))
-            return
-          }
-        }
-      } catch (error) {
-        const message = await session.send(session.text('commands.jrrp.messages.error'))
-        await JrrpService.autoRecall(session, message)
-      }
-    })
-  jrrp.subcommand('.rank', '查看今日人品排行')
-    .action(async ({ session }) => {
-      try {
-        const rankings = jrrpService.getTodayRanking()
-        const topTen = rankings.slice(0, 10)
-        const totalUsers = rankings.length
-        const userRank = jrrpService.getUserRank(session.userId)
-        const responseLines = [session.text('commands.jrrp.messages.rank_title')]
-        // 显示前10名
-        topTen.forEach((user, i) => {
-          responseLines.push(session.text('commands.jrrp.messages.rank_item', [i + 1, user.name, user.score]))
-        })
-        // 显示用户排名
-        responseLines.push(
-          userRank !== -1
-            ? session.text('commands.jrrp.messages.your_rank', [userRank, totalUsers])
-            : session.text('commands.jrrp.messages.no_rank')
-        )
-        await session.send(responseLines.join('\n'))
-      } catch (error) {
-        const message = await session.send(session.text('commands.jrrp.messages.error'))
-        await JrrpService.autoRecall(session, message)
-      }
-    })
 
-  if (config.calCode) {
-    jrrp.subcommand('.bind [code:string]', '绑定/解绑识别码')
-      .action(async ({ session }, code) => {
-        try {
-          if (session.messageId) {
-            await JrrpService.autoRecall(session, session.messageId, 500)
+      return message;
+    });
+
+  // 检查是否为Random.org模式
+  if (config.algorithm !== JrrpAlgorithm.RANDOMORG) {
+    // 检查是否启用分数预测功能
+    if (config.enableScore) {
+      jrrp.subcommand('.score [score:integer]', '获取下一个指定人品值对应日期')
+        .usage('输入一个人品值，查询你未来哪一天会获得该人品值')
+        .action(async ({ session }, score = 100) => {
+          if (!await checkUserId(session)) return;
+          // 确保score在0-100之间
+          if (score < 0 || score > 100) {
+            autoRecall(session, await session.send('人品值必须在 0-100 之间'));
+            return;
           }
-          let responseText: string
-          if (!code?.trim()) {
-            await jrrpService.removeIdentificationCode(session.userId)
-            responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success')
-          } else {
-            const existingCode = jrrpService['userData'][session.userId]?.identification_code
-            const formattedCode = code.trim().toUpperCase()
-            if (existingCode === formattedCode) {
-              responseText = session.text('commands.jrrp.messages.identification_mode.already_bound')
-            } else if (await jrrpService.bindIdentificationCode(session.userId, formattedCode)) {
-              responseText = session.text(
-                existingCode
-                  ? 'commands.jrrp.messages.identification_mode.rebind_success'
-                  : 'commands.jrrp.messages.identification_mode.bind_success'
-              )
-            } else {
-              responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code')
+          // 计算从今天开始找到匹配分数的日期
+          const today = new Date();
+          for (let i = 0; i < 3650; i++) {
+            const checkDate = new Date();
+            checkDate.setDate(today.getDate() + i);
+            const dateStr = checkDate.toLocaleDateString();
+            const calculatedResult = await calc.calculate(session.userId, dateStr);
+            // 检查是否找到匹配的分数
+            if (calculatedResult.score === score) {
+              const month = checkDate.getMonth() + 1;
+              const day = checkDate.getDate();
+              return `你${month}月${day}日的人品值是：${score}分`;
             }
           }
-          const message = await session.send(responseText)
-          await JrrpService.autoRecall(session, message)
-        } catch (error) {
-          const message = await session.send(session.text('commands.jrrp.messages.error'))
-          await JrrpService.autoRecall(session, message)
+          autoRecall(session, await session.send(`你未来十年内不会出现人品值是：${score}分`));
+        });
+    }
+    // 检查是否启用日期查询功能
+    if (config.enableDate) {
+      jrrp.subcommand('.date [date:string]', '获取指定日期人品值')
+        .usage('获取指定日期的人品值，支持的格式:MM.DD、YY/MM/DD、YYYY-MM-DD')
+        .action(async ({ session }, date) => {
+          if (!await checkUserId(session)) return;
+
+          let targetDate: Date | null;
+          if (!date) {
+            // 不提供日期时，使用当天日期
+            targetDate = new Date();
+          } else {
+            targetDate = parseDate(date);
+            // 检查日期格式是否有效
+            if (!targetDate) {
+              autoRecall(session, await session.send('日期格式不正确或无效'));
+              return;
+            }
+          }
+
+          const dateStr = targetDate.toLocaleDateString();
+          const calculatedResult = await calc.calculate(session.userId, dateStr);
+          return builder.build(calculatedResult.score, session.userId, session.username || session.userId);
+        });
+    }
+  }
+
+  // 检查是否启用排行榜功能
+  if (config.enableRank) {
+    jrrp.subcommand('.rank', '查看今日人品排行')
+      .usage('显示今天所有获取过人品值的用户排名')
+      .action(async ({ session }) => {
+        const allRanks = await store.getAllTodayFortunes();
+        // 检查是否有人获取过人品值
+        if (allRanks.length === 0) {
+          return '今天还没有人获取过人品值';
         }
-      })
+
+        let message = '——今日人品排行——\n';
+        allRanks.slice(0, 10).forEach((item, index) => {
+          message += `No.${index + 1} ${item.data.username} - ${item.data.score}分\n`;
+        });
+
+        if (session.userId) {
+          const userRank = allRanks.findIndex(item => item.userId === session.userId);
+          // 检查用户是否在排行榜中
+          message += userRank >= 0
+            ? `\n你位于第${userRank + 1}名（共${allRanks.length}人）`
+            : '\n你今天还没有获取人品值';
+        }
+        return message;
+      });
+  }
+
+  // 识别码功能
+  if (config.enableCode && config.codeHashSecret) {
+    const hashKeys = config.codeHashSecret.split('|');
+    if (hashKeys.length >= 6) {
+      const codeStore = new CodeStore(ctx.baseDir, {
+        key1: hashKeys[0], key2: hashKeys[1], key3: hashKeys[2],
+        key4: hashKeys[3], key5: hashKeys[4], key6: hashKeys[5]
+      });
+      // 注册识别码命令
+      codeStore.registerCommands({ checkUserId, autoRecall, jrrp });
+    }
   }
 }

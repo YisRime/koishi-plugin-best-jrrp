@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-best-jrrp",
-  "description": "支持真随机的今日人品，可高度自定义提示消息，带有特殊显示模式，你今天的人品值是：(6+6)*6-6！今天运气不错呢！",
+  "description": "高度可定制的今日人品插件，多种算法，多种显示格式，多样化消息配置，你今天的人品值是：(6+6)*6-6！今天运气不错呢！",
   "version": "1.2.4",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
@@ -17,7 +17,6 @@
     "dist"
   ],
   "license": "GPL-3.0",
-  "scripts": {},
   "keywords": [
     "chatbot",
     "koishi",
@@ -26,7 +25,6 @@
     "random",
     "今日人品"
   ],
-  "devDependencies": {},
   "peerDependencies": {
     "koishi": "^4.18.7"
   }
