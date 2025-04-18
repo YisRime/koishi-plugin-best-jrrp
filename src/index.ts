@@ -109,7 +109,7 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description('分数显示配置'),
   Schema.object({
     template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{image:URL}占位符与\\n换行符')
-      .default('{at}你今天的人品值是：{score}{message}{image:https://www.loliapi.com/bg}').role('textarea'),
+      .default('{at}你今天的人品值是：{score}{message}').role('textarea'),
     enableRange: Schema.boolean().description('启用区间消息').default(true),
     rangeMessages: Schema.array(Schema.object({
       min: Schema.number().description('区间最小值').min(0).max(100).default(0),
