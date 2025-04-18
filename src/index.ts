@@ -233,8 +233,7 @@ export function apply(ctx: Context, config: Config) {
     return true;
   };
 
-  const jrrp = ctx.command('jrrp', '获取今日人品')
-    .usage('查询你今天的人品值')
+  const jrrp = ctx.command('jrrp', '今日人品')
     .action(async ({ session }) => {
       if (!await checkUserId(session)) return;
       // 先查询缓存
@@ -281,8 +280,8 @@ export function apply(ctx: Context, config: Config) {
   if (config.algorithm !== JrrpAlgorithm.RANDOMORG) {
     // 检查是否启用分数预测功能
     if (config.enableScore) {
-      jrrp.subcommand('.score [score:integer]', '获取下一个指定人品值对应日期')
-        .usage('输入一个人品值，查询你未来哪一天会获得该人品值')
+      jrrp.subcommand('.score [score:integer]', '获取指定人品值日期')
+        .usage('输入人品值查询下一次获得该值的日期')
         .action(async ({ session }, score = 100) => {
           if (!await checkUserId(session)) return;
           // 确保score在0-100之间
@@ -310,7 +309,7 @@ export function apply(ctx: Context, config: Config) {
     // 检查是否启用日期查询功能
     if (config.enableDate) {
       jrrp.subcommand('.date [date:string]', '获取指定日期人品值')
-        .usage('获取指定日期的人品值，支持的格式:MM.DD、YY/MM/DD、YYYY-MM-DD')
+        .usage('输入日期查询该日期的人品值\n支持格式: MM.DD、YY/MM/DD、YYYY-MM-DD')
         .action(async ({ session }, date) => {
           if (!await checkUserId(session)) return;
 
@@ -370,7 +369,7 @@ export function apply(ctx: Context, config: Config) {
         key4: hashKeys[3], key5: hashKeys[4], key6: hashKeys[5]
       });
       // 注册识别码命令
-      codeStore.registerCommands({ checkUserId, autoRecall, jrrp });
+      codeStore.registerCommands({ checkUserId, autoRecall, parseDate, jrrp });
     }
   }
 }

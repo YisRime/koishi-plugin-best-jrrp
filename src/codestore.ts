@@ -164,19 +164,36 @@ export class CodeStore {
 
   /**
    * 注册机器人命令
-   * @param param0 包含检查用户ID、自动撤回和jrrp命令的对象
+   * @param param0 包含检查用户ID、自动撤回、jrrp命令和日期解析函数的对象
    */
-  registerCommands({ checkUserId, autoRecall, jrrp }): void {
-    jrrp.subcommand('.code', '使用识别码计算今日人品')
-      .option('s', '-s <score:integer> 获取下一个指定人品值对应日期')
-      .usage('使用绑定的识别码计算今日人品，或使用 -s 选项推算特定分数')
+  registerCommands({ checkUserId, autoRecall, parseDate, jrrp }): void {
+    jrrp.subcommand('.code', '根据识别码计算今日人品')
+      .option('s', '-s <score:integer> 计算指定人品值日期')
+      .option('d', '-d <date:string> 计算指定日期人品值')
+      .usage('使用绑定的识别码计算今日人品')
       .action(async ({ session, options }) => {
         if (!await checkUserId(session)) return
         // 获取用户绑定的识别码
         const profiles = await this.load()
         const userCode = profiles[session.userId]?.code
         if (!userCode) return autoRecall(session, await session.send('请先绑定识别码'))
-        // 查找指定分数的日期
+        // 计算指定日期人品值
+        if (options.d !== undefined) {
+          const targetDate = parseDate(options.d);
+          // 检查日期格式是否有效
+          if (!targetDate) {
+            return autoRecall(session, await session.send('日期格式不正确或无效'));
+          }
+
+          const score = this.getScore(userCode, targetDate.toLocaleDateString());
+          const month = targetDate.getMonth() + 1;
+          const day = targetDate.getDate();
+          let msg = this.specialMsgs[score] ||
+            this.scoreMsgs.find(range => score >= range.min && score <= range.max)?.message || '';
+
+          return `<at id="${session.userId}"/>你${month}月${day}日的人品值是：${score}${msg}`;
+        }
+        // 计算指定人品值日期
         if (options.s !== undefined) {
           const score = options.s
           if (score < 0 || score > 100)
@@ -186,12 +203,14 @@ export class CodeStore {
           for (let i = 0; i < 3650; i++) {
             const checkDate = new Date()
             checkDate.setDate(today.getDate() + i)
+            let msg = this.specialMsgs[score] ||
+              this.scoreMsgs.find(range => score >= range.min && score <= range.max)?.message || '';
 
             if (this.getScore(userCode, checkDate.toLocaleDateString()) === score) {
-              return `你${checkDate.getMonth() + 1}月${checkDate.getDate()}日的人品值是：${score}分`
+              return `<at id="${session.userId}"/>你${checkDate.getMonth() + 1}月${checkDate.getDate()}日的人品值是：${score}${msg}`
             }
           }
-          return autoRecall(session, await session.send(`你未来十年内不会出现人品值是：${score}分`))
+          return autoRecall(session, await session.send(`你未来十年内不会出现该人品值`))
         }
         // 计算今日人品值
         const score = this.getScore(userCode, new Date().toLocaleDateString())
