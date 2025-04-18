@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-best-jrrp",
-  "description": "高度可定制的今日人品插件，多种算法，多种显示格式，多样化消息配置，你今天的人品值是：(6+6)*6-6！今天运气不错呢！",
-  "version": "2.0.1",
+  "description": "今日人品？今日运势？多种算法，多种显示格式，多样化消息配置，支持图片，定制属于你的回复！",
+  "version": "2.0.3",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],

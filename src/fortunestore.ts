@@ -12,15 +12,19 @@ interface FortuneData {
   score: number
   /** 使用的算法 */
   algorithm: string
-  /** 生成的时间戳 */
-  timestamp: number
 }
 
 /**
- * 人品数据映射，用户ID到人品数据
- * @typedef {Record<string, FortuneData>} FortuneMap
+ * 用户人品数据映射，用户ID到人品数据
+ * @typedef {Record<string, FortuneData>} UserFortuneMap
  */
-type FortuneMap = Record<string, FortuneData>
+type UserFortuneMap = Record<string, FortuneData>
+
+/**
+ * 日期到用户映射的数据结构
+ * @typedef {Record<string, UserFortuneMap>} FortuneMap
+ */
+type FortuneMap = Record<string, UserFortuneMap>
 
 /**
  * 人品数据存储类
@@ -28,7 +32,7 @@ type FortuneMap = Record<string, FortuneData>
  */
 export class FortuneStore {
   private dataPath: string
-  private lastCleanTimestamp = 0
+  private lastCleanDate = ''
 
   /**
    * 创建人品数据存储实例
@@ -53,26 +57,14 @@ export class FortuneStore {
   }
 
   /**
-   * 获取当天开始的时间戳（UTC）
-   * @private
-   * @returns {number} 时间戳
-   */
-  private getDayStartTimestamp(): number {
-    const now = new Date()
-    return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  }
-
-  /**
    * 获取用户今日人品
    * @param {string} userId - 用户ID
-   * @returns {Promise<FortuneData|null>} 人品数据，不存在或过期则返回null
+   * @returns {Promise<FortuneData>} 人品数据，不存在则返回null
    */
   async getFortune(userId: string): Promise<FortuneData | null> {
     const data = await this.read()
-    const userFortune = data[userId]
-    const todayStart = this.getDayStartTimestamp()
-    // 检查是否有用户数据且为今天的数据
-    return userFortune && userFortune.timestamp >= todayStart ? userFortune : null
+    const todayStr = new Date().toISOString().slice(0, 10)
+    return data[todayStr]?.[userId] ?? null
   }
 
   /**
@@ -84,17 +76,20 @@ export class FortuneStore {
   async save(userId: string, fortune: FortuneData): Promise<void> {
     try {
       const allData = await this.read()
-      allData[userId] = fortune
-      const todayStart = this.getDayStartTimestamp()
-      // 检查是否需要清理过期数据（日期变化时）
-      if (todayStart > this.lastCleanTimestamp) {
-        this.lastCleanTimestamp = todayStart
-        // 清理过期数据
-        Object.keys(allData).forEach(id => {
-          // 检查数据是否过期（不是今天的）
-          if (allData[id].timestamp < todayStart) delete allData[id]
-        })
+      const todayStr = new Date().toISOString().slice(0, 10)
+      // 确保今天的数据存在
+      allData[todayStr] ??= {}
+      allData[todayStr][userId] = fortune
+      // 清理过期数据（如果日期变化）
+      if (todayStr !== this.lastCleanDate) {
+        this.lastCleanDate = todayStr
+        // 只保留最近7天的数据
+        const dates = Object.keys(allData).sort()
+        if (dates.length > 7) {
+          dates.slice(0, dates.length - 7).forEach(date => delete allData[date])
+        }
       }
+
       await fs.writeFile(this.dataPath, JSON.stringify(allData, null, 2))
     } catch {}
   }
@@ -105,10 +100,10 @@ export class FortuneStore {
    */
   async getAllTodayFortunes(): Promise<Array<{userId: string, data: FortuneData}>> {
     const allData = await this.read()
-    const todayStart = this.getDayStartTimestamp()
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const todayData = allData[todayStr] ?? {}
 
-    return Object.entries(allData)
-      .filter(([, fortune]) => fortune.timestamp >= todayStart)
+    return Object.entries(todayData)
       .map(([userId, data]) => ({ userId, data }))
       .sort((a, b) => b.data.score - a.data.score)
   }

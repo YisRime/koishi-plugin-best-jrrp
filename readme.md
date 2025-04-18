@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-best-jrrp?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-best-jrrp)
 
-高度可定制的今日人品插件，多种算法，多种显示格式，多样化消息配置，你今天的人品值是：(6+6)*6-6！今天运气不错呢！
+今日人品？今日运势？多种算法，多种显示格式，多样化消息配置，支持图片，定制属于你的回复！
 
 ## 🌟 功能特性
 
@@ -54,7 +54,7 @@ scoreFormat: 'simple'      # 格式化样式：binary(二进制)/octal(八进制
 ### 4. 消息配置
 
 ```yaml
-template: '{at}你今天的人品值是：{score}{message}'  # 消息模板，支持{at}、{username}、{score}、{message}、{image:URL}
+template: '{at}你今天的人品值是：{score}{message}'  # 消息模板，支持{at}、{username}、{score}、{message}、{image:URL}占位符与\n换行符
 enableRange: true   # 启用区间消息
 enableSpecial: true # 启用特殊消息
 

@@ -97,9 +97,11 @@ export class MsgBuilder {
           message = rangeMessages[Math.floor(Math.random() * rangeMessages.length)].message;
         }
       }
+      // 处理消息中的换行符
+      message = message ? message.replace(/\\n/g, '\n') : message;
     }
     // 替换模板占位符
-    let result = this.config.template
+    let result = (this.config.template ? this.config.template.replace(/\\n/g, '\n') : this.config.template)
       .replace(/{at}/g, `<at id="${userId}"/>`)
       .replace(/{username}/g, username)
       .replace(/{score}/g, formattedScore)
