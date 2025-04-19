@@ -76,6 +76,8 @@ export interface Config {
   enableScore: boolean
   /** 是否启用排行榜 */
   enableRank: boolean
+  /** 是否启用历史记录 */
+  enableHistory: boolean
   /** 是否启用识别码功能 */
   enableCode: boolean
 }
@@ -94,6 +96,7 @@ export const Config: Schema<Config> = Schema.intersect([
     enableDate: Schema.boolean().description('启用日期查询').default(true),
     enableScore: Schema.boolean().description('启用分数预测').default(true),
     enableRank: Schema.boolean().description('启用排行榜').default(true),
+    enableHistory: Schema.boolean().description('启用历史记录').default(true),
     enableCode: Schema.boolean().description('启用识别码').default(false)
   }).description('指令配置'),
   Schema.object({
@@ -327,7 +330,7 @@ export function apply(ctx: Context, config: Config) {
           }
 
           const dateStr = targetDate.toLocaleDateString();
-          const calculatedResult = await calc.calculate(session.userId, dateStr);
+                    const calculatedResult = await calc.calculate(session.userId, dateStr);
           return builder.build(calculatedResult.score, session.userId, session.username || session.userId);
         });
     }
@@ -358,6 +361,36 @@ export function apply(ctx: Context, config: Config) {
         }
         return message;
       });
+
+    // 检查是否启用历史记录查询功能
+    if (config.enableHistory) {
+      jrrp.subcommand('.history', '查看人品历史')
+        .usage('显示最近15天的人品记录')
+        .action(async ({ session }) => {
+          if (!await checkUserId(session)) return;
+
+          const history = await store.getUserHistory(session.userId);
+          if (history.length === 0) {
+            return '你还没有获取过人品';
+          }
+
+          let message = `${session.username || session.userId} 的人品历史：\n`;
+          // 按每行3个记录格式化显示
+          for (let i = 0; i < history.length; i += 3) {
+            const recordsInRow = [];
+            // 处理当前行的记录
+            for (let j = i; j < Math.min(i + 3, history.length); j++) {
+              const record = history[j];
+              const dateParts = record.date.split('-');
+              const displayDate = `${dateParts[1]}-${dateParts[2]}`;
+              recordsInRow.push(`${displayDate}: ${record.score}分`);
+            }
+            // 将当前行的记录添加到消息中
+            message += recordsInRow.join(' | ') + '\n';
+          }
+          return message;
+        });
+    }
   }
 
   // 识别码功能
