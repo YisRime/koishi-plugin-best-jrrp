@@ -36,15 +36,14 @@ export class FortuneCalc {
    * @returns {Promise<FortuneResult>} 计算结果
    */
   async calculate(userId: string, date: string): Promise<FortuneResult> {
-    // 检查是否使用Random.org且有API密钥
+    // 尝试使用Random.org
     if (this.algorithm === JrrpAlgorithm.RANDOMORG && this.apiKey) {
       const score = await this.fetchRandom();
-      // 检查是否获取成功
       if (score !== null) {
         return { score, actualAlgorithm: JrrpAlgorithm.RANDOMORG };
       }
     }
-    // 使用本地算法计算
+    // 本地算法计算
     const seed = this.generateSeed(userId, date);
     const score = this.algorithm === JrrpAlgorithm.GAUSSIAN ?
       this.gaussianDistribution(seed) : this.linearCongruential(seed);
@@ -58,9 +57,9 @@ export class FortuneCalc {
    */
   private async fetchRandom(): Promise<number|null> {
     if (!this.apiKey) return null;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
       const response = await fetch('https://api.random.org/json-rpc/4/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,19 +70,17 @@ export class FortuneCalc {
             apiKey: this.apiKey,
             n: 1,
             min: 0,
-            max: 100,
-            replacement: true
+            max: 100
           },
           id: 1
         }),
         signal: controller.signal
       });
-      clearTimeout(timeout);
+      clearTimeout(timeoutId);
       if (!response.ok) return null;
       const data = await response.json();
       return data?.result?.random?.data?.[0] ?? null;
     } catch {
-      clearTimeout(timeout);
       return null;
     }
   }
@@ -96,13 +93,13 @@ export class FortuneCalc {
    * @returns {number} 生成的种子
    */
   private generateSeed(userId: string, dateStr: string): number {
-    let seed = 0;
+    let hash = 0;
     const str = userId + dateStr;
     for (let i = 0; i < str.length; i++) {
-      seed = ((seed << 5) - seed) + str.charCodeAt(i);
-      seed |= 0;
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
     }
-    return Math.abs(seed);
+    return Math.abs(hash);
   }
 
   /**

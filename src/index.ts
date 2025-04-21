@@ -123,8 +123,8 @@ export const Config: Schema<Config> = Schema.intersect([
     ]).description('格式化样式').default('simple')
   }).description('分数显示配置'),
   Schema.object({
-    template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{hitokoto}、{image:URL}占位符与\\n换行符')
-      .default('{at}你今天的人品值是：{score}{message}\n{hitokoto}').role('textarea'),
+    template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{hitokoto}、{image:URL}占位符')
+      .default('{at}你今天的人品值是：{score}{message}').role('textarea'),
     enableRange: Schema.boolean().description('启用区间消息').default(true),
     rangeMessages: Schema.array(Schema.object({
       min: Schema.number().description('区间最小值').min(0).max(100).default(0),
@@ -145,7 +145,7 @@ export const Config: Schema<Config> = Schema.intersect([
       condition: Schema.string().description('触发条件（人品值或日期）').pattern(/^(\d+|\d{1,2}-\d{1,2})$/),
       message: Schema.string().description('对应消息')
     })).description('特殊消息配置').default([
-      { condition: '0', message: '！差评如潮！' },
+      { condition: '0', message: '？！' },
       { condition: '50', message: '！五五开……' },
       { condition: '100', message: '！100！100！！！！！' },
       { condition: '1-1', message: '！新年快乐！' },
@@ -161,32 +161,37 @@ export const Config: Schema<Config> = Schema.intersect([
  * @returns {Date|null} 解析后的日期对象，无效时返回null
  */
 function parseDate(dateStr: string): Date | null {
-  const pattern = /^(?:(\d{1,2})|(\d{2})|(\d{4}))[-\.\/](\d{1,2})(?:[-\.\/](\d{1,2}))?$/;
-  const match = dateStr.match(pattern);
-  // 检查是否匹配日期格式
-  if (!match) return null;
-  const currentYear = new Date().getFullYear();
-  const currentCentury = Math.floor(currentYear / 100) * 100;
-  let year = currentYear;
-  let month: number, day: number;
-  // 确定日期格式并解析
-  if (match[1] && !match[5]) {
-    month = parseInt(match[1], 10) - 1;
-    day = parseInt(match[4], 10);
-  } else if (match[2]) {
-    year = currentCentury + parseInt(match[2], 10);
-    month = parseInt(match[4], 10) - 1;
-    day = parseInt(match[5], 10);
-  } else if (match[3]) {
-    year = parseInt(match[3], 10);
-    month = parseInt(match[4], 10) - 1;
-    day = parseInt(match[5], 10);
-  } else {
-    month = parseInt(match[4], 10) - 1;
-    day = parseInt(match[5], 10);
+  const formats = [
+    // MM-DD
+    /^(\d{1,2})-(\d{1,2})$/,
+    // MM/DD or MM.DD
+    /^(\d{1,2})[\/\.](\d{1,2})$/,
+    // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+    /^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/,
+    // YY-MM-DD or YY/MM/DD or YY.MM.DD
+    /^(\d{2})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/
+  ];
+  for (const format of formats) {
+    const match = dateStr.match(format);
+    if (!match) continue;
+    let year = new Date().getFullYear();
+    let month: number, day: number;
+    if (match.length === 3) { // MM-DD
+      month = parseInt(match[1], 10) - 1;
+      day = parseInt(match[2], 10);
+    } else if (match.length === 4 && match[1].length === 4) { // YYYY-MM-DD
+      year = parseInt(match[1], 10);
+      month = parseInt(match[2], 10) - 1;
+      day = parseInt(match[3], 10);
+    } else if (match.length === 4) { // YY-MM-DD
+      year = Math.floor(year / 100) * 100 + parseInt(match[1], 10);
+      month = parseInt(match[2], 10) - 1;
+      day = parseInt(match[3], 10);
+    } else continue;
+    const date = new Date(year, month, day);
+    return isNaN(date.getTime()) ? null : date;
   }
-  const targetDate = new Date(year, month, day);
-  return isNaN(targetDate.getTime()) ? null : targetDate;
+  return null;
 }
 
 /**
@@ -219,7 +224,7 @@ async function autoRecall(session: any, message: any, delay = 10000): Promise<vo
  */
 export function apply(ctx: Context, config: Config) {
   const calc = new FortuneCalc(config.algorithm, config.apiKey)
-  const store = new FortuneStore(ctx)  // 修改这里，传入ctx而非baseDir
+  const store = new FortuneStore(ctx)
   const builder = new MsgBuilder({
     rangeMessages: config.rangeMessages,
     specialMessages: config.specialMessages,
@@ -255,20 +260,11 @@ export function apply(ctx: Context, config: Config) {
       let needSave = false;
       // 检查是否有有效缓存
       if (cachedResult) {
-        // 检查是否使用Random.org或算法是否一致
-        if (config.algorithm === JrrpAlgorithm.RANDOMORG ||
-            cachedResult.algorithm === config.algorithm) {
-          result = {
-            score: cachedResult.score,
-            actualAlgorithm: cachedResult.algorithm as JrrpAlgorithm
-          };
-        } else {
-          // 本地算法不同，重新计算
-          result = await calc.calculate(
-            session.userId, new Date().toLocaleDateString()
-          );
-          needSave = true;
-        }
+        // 直接使用缓存结果
+        result = {
+          score: cachedResult.score,
+          actualAlgorithm: cachedResult.algorithm as JrrpAlgorithm
+        };
       } else {
         // 无缓存，计算新结果
         result = await calc.calculate(
@@ -358,6 +354,49 @@ export function apply(ctx: Context, config: Config) {
         return message;
       });
   }
+  // 添加分析功能命令
+  jrrp.subcommand('.analyse', '分析人品数据')
+    .usage('分析你的人品数据统计信息')
+    .action(async ({ session }) => {
+      if (!await checkUserId(session)) return;
+      // 获取用户所有历史记录与全局统计
+      const [history, globalStats] = await Promise.all([
+        store.getUserHistory(session.userId),
+        store.getGlobalStats()
+      ]);
+      if (!history?.length) return '暂无人品记录可供分析';
+      // 计算基础统计数据
+      const scores = history.map(entry => entry.score);
+      const count = scores.length;
+      const sum = scores.reduce((a, b) => a + b, 0);
+      const mean = sum / count;
+      const variance = scores.reduce((acc, s) => acc + Math.pow(s - mean, 2), 0) / count;
+      const stdDev = Math.sqrt(variance);
+      const [min, max] = [Math.min(...scores), Math.max(...scores)];
+      // 计算中位数
+      const sortedScores = [...scores].sort((a, b) => a - b);
+      const median = count % 2 === 0
+        ? (sortedScores[count/2 - 1] + sortedScores[count/2]) / 2
+        : sortedScores[Math.floor(count/2)];
+      // 比较符号
+      const avgComp = mean > globalStats.avgScore ? '>' : '<';
+      const stdComp = stdDev < globalStats.stdDev ? '<' : '>';
+      // 构建结果消息
+      const message = [
+        `——${session.username}的人品分析——`,
+        `平均分: ${mean.toFixed(1)} ${avgComp} ${globalStats.avgScore.toFixed(1)}`,
+        `中位数: ${median.toFixed(1)} | ${min}-${max}`,
+        `标准差: ${stdDev.toFixed(1)} ${stdComp} ${globalStats.stdDev.toFixed(1)}`,
+        `——近期记录——`
+      ];
+      // 显示最近记录
+      const recentScores = history.slice(0, 10).map(entry => entry.score);
+      for (let i = 0; i < recentScores.length; i += 5) {
+        const row = recentScores.slice(i, i + 5).map(score => score.toString().padStart(2));
+        message.push(row.join(' | '));
+      }
+      return message.join('\n');
+    });
   // 添加清除数据的命令
   jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })
     .usage('清除人品数据')

@@ -134,4 +134,63 @@ export class FortuneStore {
       return 0;
     }
   }
+
+  /**
+   * 获取用户历史人品记录
+   * @param userId 用户ID
+   * @param limit 可选，限制返回的记录数量
+   * @returns 用户历史人品记录
+   */
+  async getUserHistory(userId: string, limit?: number): Promise<JrrpEntry[]> {
+    // 构建查询
+    let query = this.ctx.database
+      .select('jrrp')
+      .where({ userId })
+      .orderBy('date', 'desc');
+    // 如果有指定限制数量
+    if (limit && limit > 0) {
+      query = query.limit(limit);
+    }
+    return await query.execute();
+  }
+
+  /**
+   * 获取全局人品统计数据
+   * @returns 全局人品统计数据
+   */
+  async getGlobalStats(): Promise<{
+    count: number;
+    avgScore: number;
+    maxScore: number;
+    minScore: number;
+    stdDev: number;
+  }> {
+    // 获取所有记录
+    const records = await this.ctx.database
+      .select('jrrp')
+      .execute();
+    if (records.length === 0) {
+      return {
+        count: 0,
+        avgScore: 0,
+        maxScore: 0,
+        minScore: 0,
+        stdDev: 0
+      };
+    }
+    // 计算统计数据
+    const scores = records.map(entry => entry.score);
+    const count = scores.length;
+    const sum = scores.reduce((a, b) => a + b, 0);
+    const mean = sum / count;
+    // 计算方差
+    const variance = scores.reduce((acc, score) => acc + Math.pow(score - mean, 2), 0) / count;
+    return {
+      count,
+      avgScore: mean,
+      maxScore: Math.max(...scores),
+      minScore: Math.min(...scores),
+      stdDev: Math.sqrt(variance)
+    };
+  }
 }

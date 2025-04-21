@@ -69,30 +69,15 @@ export class MsgBuilder {
         const condition = String(msg.condition)
         if (/^\d{1,2}-\d{1,2}$/.test(condition)) {
           // 日期特殊消息
-          this.dateSpecialMsgsMap.set(
-            condition,
-            [...(this.dateSpecialMsgsMap.get(condition) || []), msg]
-          )
+          const msgs = this.dateSpecialMsgsMap.get(condition) || []
+          msgs.push(msg)
+          this.dateSpecialMsgsMap.set(condition, msgs)
         } else if (/^\d+$/.test(condition)) {
           // 分数特殊消息
           const score = parseInt(condition, 10)
-          this.scoreSpecialMsgsMap.set(
-            score,
-            [...(this.scoreSpecialMsgsMap.get(score) || []), msg]
-          )
-        }
-      }
-    }
-    // 处理区间消息
-    if (this.config.rangeMessages?.length && this.config.enableRange) {
-      // 初始化区间缓存数组
-      this.rangesCache = Array.from({ length: 101 }, () => [])
-      // 填充区间消息缓存
-      for (const range of this.config.rangeMessages) {
-        const min = Math.max(0, range.min)
-        const max = Math.min(100, range.max)
-        for (let i = min; i <= max; i++) {
-          this.rangesCache[i].push(range)
+          const msgs = this.scoreSpecialMsgsMap.get(score) || []
+          msgs.push(msg)
+          this.scoreSpecialMsgsMap.set(score, msgs)
         }
       }
     }
@@ -157,7 +142,6 @@ export class MsgBuilder {
       .replace(/{username}/g, username)
       .replace(/{score}/g, formattedScore)
       .replace(/{message}/g, message)
-      .replace(/\\n/g, '\n')
       .replace(/{image:([^}]+)}/g, '<image url="$1"/>')
   }
 
