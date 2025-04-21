@@ -81,6 +81,19 @@ export class MsgBuilder {
         }
       }
     }
+    // 处理区间消息
+    if (this.config.rangeMessages?.length && this.config.enableRange) {
+      // 初始化区间缓存数组
+      this.rangesCache = Array.from({ length: 101 }, () => [])
+      // 填充区间消息缓存
+      for (const range of this.config.rangeMessages) {
+        const min = Math.max(0, range.min)
+        const max = Math.min(100, range.max)
+        for (let i = min; i <= max; i++) {
+          this.rangesCache[i].push(range)
+        }
+      }
+    }
   }
 
   /**
