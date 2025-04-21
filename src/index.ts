@@ -123,8 +123,8 @@ export const Config: Schema<Config> = Schema.intersect([
     ]).description('格式化样式').default('simple')
   }).description('分数显示配置'),
   Schema.object({
-    template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{image:URL}占位符与\\n换行符')
-      .default('{at}你今天的人品值是：{score}{message}').role('textarea'),
+    template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{hitokoto}、{image:URL}占位符与\\n换行符')
+      .default('{at}你今天的人品值是：{score}{message}\n{hitokoto}').role('textarea'),
     enableRange: Schema.boolean().description('启用区间消息').default(true),
     rangeMessages: Schema.array(Schema.object({
       min: Schema.number().description('区间最小值').min(0).max(100).default(0),
@@ -277,7 +277,7 @@ export function apply(ctx: Context, config: Config) {
         needSave = true;
       }
       // 生成消息并保存结果
-      const message = builder.build(result.score, session.userId, session.username || session.userId);
+      const message = await builder.build(result.score, session.userId, session.username || session.userId);
       if (needSave) {
         store.save(session.userId, {
           username: session.username || session.userId,
@@ -330,7 +330,7 @@ export function apply(ctx: Context, config: Config) {
           }
           const dateStr = targetDate.toLocaleDateString();
           const result = await calc.calculate(session.userId, dateStr);
-          return builder.build(result.score, session.userId, session.username || session.userId);
+          return await builder.build(result.score, session.userId, session.username || session.userId);
         });
     }
   }
@@ -358,7 +358,28 @@ export function apply(ctx: Context, config: Config) {
         return message;
       });
   }
-
+  // 添加清除数据的命令
+  jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })
+    .usage('清除人品数据')
+    .option('user', '-u <userId> 指定用户ID')
+    .option('date', '-d <date> 指定日期')
+    .action(async ({ options }) => {
+      const { user: userId, date: dateInput } = options;
+      // 处理日期参数
+      let dateStr: string;
+      if (dateInput) {
+        const parsedDate = parseDate(dateInput);
+        if (!parsedDate) return '日期格式不正确';
+        dateStr = parsedDate.toISOString().slice(0, 10);
+      }
+      // 执行清除并返回结果
+      const count = await store.clearData(userId, dateStr);
+      const target = [
+        userId && `用户:${userId}`,
+        dateStr && `日期:${dateInput}`
+      ].filter(Boolean).join('、') || '全部';
+      return `成功删除了${target}的${count}条记录`;
+    });
   // 识别码功能
   if (config.enableCode && config.codeHashSecret) {
     const hashKeys = config.codeHashSecret.split('|');

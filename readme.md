@@ -18,6 +18,7 @@
 - `jrrp.date [date]` - 查询指定日期的人品值（支持MM-DD、YY/MM/DD、YYYY-MM-DD格式）
 - `jrrp.score [score]` - 查找未来何时会出现指定分数
 - `jrrp.rank` - 查看今日人品排行榜
+- `jrrp.clear` - 清除人品数据
 - `jrrp.code` - 使用绑定的识别码获取人品值
 - `jrrp.code -s <score>` - 使用识别码查找特定分数对应日期
 - `jrrp.code -d <date>` - 使用识别码查找特定日期对应分数
@@ -55,7 +56,7 @@ scoreFormat: 'simple'      # 格式化样式：binary(二进制)/octal(八进制
 ### 4. 消息配置
 
 ```yaml
-template: '{at}你今天的人品值是：{score}{message}'  # 消息模板，支持{at}、{username}、{score}、{message}、{image:URL}占位符与\n换行符
+template: '{at}你今天的人品值是：{score}{message}\n{hitokoto}'  # 消息模板，支持{at}、{username}、{score}、{message}、{hitokoto}、{image:URL}占位符与\n换行符
 enableRange: true   # 启用区间消息
 enableSpecial: true # 启用特殊消息
 
@@ -115,9 +116,9 @@ specialMessages:
 
 ## 消息配置
 
-消息模板支持{at}、{username}、{score}、{message}、{image:URL}占位符与\n换行符。
-{at}: @用户、{username}: 用户名、{score}: 用户获得的分数；
-{message}: 区间消息或特殊消息、{image:URL}: 将 URL 替换为图片链接，返回对应图片。
+消息模板支持{at}、{username}、{score}、{message}、{hitokoto:c=f}、{image:URL}占位符与\n换行符。
+{at}: @用户、{username}: 用户名、{score}: 用户获得的分数、{message}: 区间消息或特殊消息；
+{hitokoto}: 一言，支持参数，如{hitokoto:c=a&c=b}、{image:URL}: 将 URL 替换为图片链接，返回对应图片。
 
 支持显示多行文本，使用 \n 进行换行。
 区间消息和特殊消息支持触发条件重复，如果重复则会随机选择一条进行显示。

@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-best-jrrp",
   "description": "今日人品？今日运势？多种算法，多种显示格式，多样化消息配置，支持图片，最大限度的定制插件！",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],

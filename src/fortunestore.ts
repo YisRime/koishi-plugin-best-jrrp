@@ -111,4 +111,27 @@ export class FortuneStore {
       }
     }))
   }
+
+  /**
+   * 清除人品数据
+   * @param userId 可选，指定用户ID
+   * @param date 可选，指定日期
+   * @returns 清除的记录数量
+   */
+  async clearData(userId?: string, date?: string): Promise<number> {
+    // 创建查询条件
+    const query: Partial<JrrpEntry> = {};
+    if (userId) query.userId = userId;
+    if (date) query.date = date;
+    // 需要至少一个条件
+    if (!userId && !date) return 0;
+    try {
+      // 获取并删除记录
+      const records = await this.ctx.database.get('jrrp', query);
+      await this.ctx.database.remove('jrrp', query);
+      return records.length;
+    } catch (e) {
+      return 0;
+    }
+  }
 }
