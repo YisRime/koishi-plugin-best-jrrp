@@ -103,13 +103,11 @@ export class CodeStore {
     const formatted = code.trim().toUpperCase();
     // 验证识别码格式
     if (!/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(formatted)) return false;
-
     const profiles = await this.load()
     profiles[uid] = {
       code: formatted,
       ...(profiles[uid]?.unlocked && { unlocked: true })
     };
-
     await fs.writeFile(this.storePath, JSON.stringify(profiles, null, 2))
     return true
   }
@@ -163,7 +161,7 @@ export class CodeStore {
   }
 
   /**
-   * 注册机器人命令
+   * 注册命令
    * @param param0 包含检查用户ID、自动撤回、jrrp命令和日期解析函数的对象
    */
   registerCommands({ checkUserId, autoRecall, parseDate, jrrp }): void {
@@ -184,13 +182,11 @@ export class CodeStore {
           if (!targetDate) {
             return autoRecall(session, await session.send('日期格式不正确或无效'));
           }
-
           const score = this.getScore(userCode, targetDate.toLocaleDateString());
           const month = targetDate.getMonth() + 1;
           const day = targetDate.getDate();
           let msg = this.specialMsgs[score] ||
             this.scoreMsgs.find(range => score >= range.min && score <= range.max)?.message || '';
-
           return `<at id="${session.userId}"/>你${month}月${day}日的人品值是：${score}${msg}`;
         }
         // 计算指定人品值日期
@@ -205,7 +201,6 @@ export class CodeStore {
             checkDate.setDate(today.getDate() + i)
             let msg = this.specialMsgs[score] ||
               this.scoreMsgs.find(range => score >= range.min && score <= range.max)?.message || '';
-
             if (this.getScore(userCode, checkDate.toLocaleDateString()) === score) {
               return `<at id="${session.userId}"/>你${checkDate.getMonth() + 1}月${checkDate.getDate()}日的人品值是：${score}${msg}`
             }
@@ -237,14 +232,12 @@ export class CodeStore {
         if (isFirst) msg += '\n' + this.unlockMsg;
         return `<at id="${session.userId}"/>你今天的人品值是：${score}${msg}`
       })
-
     jrrp.subcommand('.bind <code:string>', '绑定识别码')
       .usage('绑定识别码，格式: XXXX-XXXX-XXXX-XXXX')
       .action(async ({ session }, code) => {
         if (!await checkUserId(session)) return
         if (session.messageId) autoRecall(session, session.messageId, 500)
         if (!code) return autoRecall(session, await session.send('请提供识别码'))
-
         const success = await this.linkCode(session.userId, code);
         return autoRecall(session, await session.send(success ? `绑定识别码成功：${code.trim().toUpperCase()}` : '绑定识别码失败'))
       })

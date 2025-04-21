@@ -58,10 +58,8 @@ export class FortuneCalc {
    */
   private async fetchRandom(): Promise<number|null> {
     if (!this.apiKey) return null;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
-
     try {
       const response = await fetch('https://api.random.org/json-rpc/4/invoke', {
         method: 'POST',
@@ -80,10 +78,8 @@ export class FortuneCalc {
         }),
         signal: controller.signal
       });
-
       clearTimeout(timeout);
       if (!response.ok) return null;
-
       const data = await response.json();
       return data?.result?.random?.data?.[0] ?? null;
     } catch {
@@ -102,12 +98,10 @@ export class FortuneCalc {
   private generateSeed(userId: string, dateStr: string): number {
     let seed = 0;
     const str = userId + dateStr;
-
     for (let i = 0; i < str.length; i++) {
       seed = ((seed << 5) - seed) + str.charCodeAt(i);
       seed |= 0;
     }
-
     return Math.abs(seed);
   }
 
@@ -121,7 +115,6 @@ export class FortuneCalc {
     const u1 = Math.abs(Math.sin(seed) * 10000 % 1) || 0.0001;
     const u2 = Math.abs(Math.sin(seed + 127) * 10000 % 1) || 0.0001;
     const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-
     return Math.max(0, Math.min(100, Math.round(z * 15 + 50)));
   }
 

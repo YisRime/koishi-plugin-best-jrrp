@@ -1,232 +1,114 @@
-import { promises as fs } from 'fs'
-import path from 'path'
+import { Context } from 'koishi'
 
 /**
- * 人品数据存储模块
- * 负责用户今日人品数据的存储、读取和管理
- * @module fortunestore
+ * 定义数据库表结构
  */
+declare module 'koishi' {
+  interface Tables {
+    jrrp: JrrpEntry
+  }
+}
 
 /**
- * 人品数据接口
+ * 人品数据表结构
  */
-interface FortuneData {
-  /** 用户名 */
+export interface JrrpEntry {
+  userId: string
   username: string
-  /** 人品分数 */
+  algorithm: string
+  date: string
   score: number
-  /** 使用的算法 */
+}
+
+/**
+ * 完整的人品数据
+ */
+export interface FortuneData {
+  username: string
+  score: number
   algorithm: string
 }
 
 /**
- * 人品记录接口，包含完整信息
- */
-interface FortuneRecord extends FortuneData {
-  /** 日期字符串 */
-  date: string
-  /** 用户ID */
-  userId: string
-}
-
-/**
- * 用户的历史人品记录
- * @typedef {Record<string, FortuneData>} UserHistory - 日期到人品数据的映射
- */
-type UserHistory = Record<string, FortuneData>
-
-/**
- * 存储结构接口
- */
-interface StorageData {
-  /** 用户历史记录（用户ID -> 日期 -> 人品数据） */
-  users: Record<string, UserHistory>
-  /** 日期索引（日期 -> 用户ID列表） */
-  dateIndex: Record<string, string[]>
-  /** 最后更新时间 */
-  lastUpdated: string
-}
-
-/**
  * 人品数据存储类
- * 提供人品数据的读取、保存和查询功能
  */
 export class FortuneStore {
-  private dataPath: string
-  private lastCleanDate = ''
-
-  /**
-   * 创建人品数据存储实例
-   * @param {string} baseDir - 基础目录路径
-   */
-  constructor(baseDir: string) {
-    this.dataPath = path.join(baseDir, 'data', 'jrrp.json')
+  constructor(private ctx: Context) {
+    ctx.model.extend('jrrp', {
+      userId: 'string',
+      username: 'string',
+      algorithm: 'string',
+      date: 'string',
+      score: 'integer',
+    }, {
+      primary: ['userId', 'date'],
+    })
   }
 
   /**
-   * 获取当前本地日期字符串（YYYY-MM-DD 格式）
-   * @returns {string} 格式化的日期字符串
-   * @private
+   * 清理字符串，移除不可见字符和特殊字符，限制长度
    */
-  private getLocalDateString(): string {
-    const now = new Date()
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  sanitizeString(input: string): string {
+    if (!input) return ''
+    return String(input)
+      .replace(/[\x00-\x1F\x7F\u200B-\u200F\u2028-\u202F\uFEFF]|[<>`$()[\]{};'"\\\=]|\s+/g, ' ')
+      .replace(/(.)\1{3,}/g, '$1$1$1$1$1…')
+      .trim()
+      .slice(0, 64)
   }
 
   /**
-   * 读取人品数据
-   * @returns {Promise<StorageData>} 读取到的存储数据
-   * @private
+   * 查询用户人品数据
+   * @param userId 用户ID
+   * @param date 可选，指定日期，默认为今天
    */
-  private async read(): Promise<StorageData> {
-    try {
-      const content = await fs.readFile(this.dataPath, 'utf-8')
-      const data = JSON.parse(content) as StorageData
-      // 验证数据完整性
-      if (data && typeof data === 'object' && data.users && data.dateIndex) {
-        return data
-      }
-    } catch {}
-    // 文件不存在或读取错误
+  async getFortune(userId: string, date?: string): Promise<FortuneData | null> {
+    const actualDate = date || new Date().toISOString().slice(0, 10)
+    const records = await this.ctx.database.get('jrrp', { userId, date: actualDate })
+    if (!records.length) return null
+    const { username, algorithm, score } = records[0]
     return {
-      users: {},
-      dateIndex: {},
-      lastUpdated: this.getLocalDateString()
+      username: this.sanitizeString(username),
+      algorithm,
+      score
     }
-  }
-
-  /**
-   * 写入人品数据
-   * @param {StorageData} data - 要写入的数据
-   * @returns {Promise<void>}
-   * @private
-   */
-  private async write(data: StorageData): Promise<void> {
-    data.lastUpdated = this.getLocalDateString()
-    await fs.writeFile(this.dataPath, JSON.stringify(data, null, 2))
-  }
-
-  /**
-   * 清理过期数据，只保留最近28天
-   * @param {StorageData} data - 需要清理的数据
-   * @param {string} todayStr - 今天的日期字符串
-   * @returns {StorageData} 清理后的数据
-   * @private
-   */
-  private cleanExpiredData(data: StorageData, todayStr: string): StorageData {
-    if (todayStr === this.lastCleanDate) return data
-
-    this.lastCleanDate = todayStr
-    const dates = Object.keys(data.dateIndex).sort()
-    // 只保留最近28天的数据
-    if (dates.length > 28) {
-      const keepDates = dates.slice(-28)
-      const newData: StorageData = {
-        users: {},
-        dateIndex: {},
-        lastUpdated: data.lastUpdated
-      }
-      // 只保留要保留的日期数据
-      Object.entries(data.users).forEach(([userId, userHistory]) => {
-        newData.users[userId] = {}
-
-        keepDates.forEach(date => {
-          if (userHistory[date]) {
-            newData.users[userId][date] = userHistory[date]
-
-            newData.dateIndex[date] = newData.dateIndex[date] || []
-            if (!newData.dateIndex[date].includes(userId)) {
-              newData.dateIndex[date].push(userId)
-            }
-          }
-        })
-        // 如果用户没有任何记录，删除该用户
-        if (Object.keys(newData.users[userId]).length === 0) {
-          delete newData.users[userId]
-        }
-      })
-
-      return newData
-    }
-
-    return data
-  }
-
-  /**
-   * 获取用户今日人品
-   * @param {string} userId - 用户ID
-   * @returns {Promise<FortuneData | null>} 用户今日人品数据，如不存在则返回null
-   */
-  async getFortune(userId: string): Promise<FortuneData | null> {
-    const data = await this.read()
-    const todayStr = this.getLocalDateString()
-    return data.users[userId]?.[todayStr] ?? null
-  }
-
-  /**
-   * 获取用户指定日期的人品
-   * @param {string} userId - 用户ID
-   * @param {string} date - 日期字符串，格式为YYYY-MM-DD
-   * @returns {Promise<FortuneData | null>} 指定日期的人品数据，如不存在则返回null
-   */
-  async getFortuneByDate(userId: string, date: string): Promise<FortuneData | null> {
-    const data = await this.read()
-    return data.users[userId]?.[date] ?? null
-  }
-
-  /**
-   * 获取用户的历史人品记录
-   * @param {string} userId - 用户ID
-   * @param {number} [limit=15] - 限制返回的记录数量
-   * @returns {Promise<FortuneRecord[]>} 用户历史人品记录列表，按日期降序排序
-   */
-  async getUserHistory(userId: string, limit = 15): Promise<FortuneRecord[]> {
-    const data = await this.read()
-    const userHistory = data.users[userId] || {}
-
-    return Object.entries(userHistory)
-      .map(([date, fortuneData]) => ({ ...fortuneData, date, userId }))
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, limit)
   }
 
   /**
    * 保存人品数据
-   * @param {string} userId - 用户ID
-   * @param {FortuneData} fortune - 要保存的人品数据
-   * @returns {Promise<void>}
    */
-  async save(userId: string, fortune: FortuneData): Promise<void> {
+  async save(userId: string, fortune: FortuneData): Promise<boolean> {
     try {
-      let data = await this.read()
-      const todayStr = this.getLocalDateString()
-      // 初始化用户记录和日期索引
-      if (!data.users[userId]) data.users[userId] = {}
-      if (!data.dateIndex[todayStr]) data.dateIndex[todayStr] = []
-      // 保存用户当天记录
-      data.users[userId][todayStr] = fortune
-      // 添加用户到日期索引
-      if (!data.dateIndex[todayStr].includes(userId)) {
-        data.dateIndex[todayStr].push(userId)
-      }
-      // 清理过期数据并保存
-      data = this.cleanExpiredData(data, todayStr)
-      await this.write(data)
-    } catch {}
+      await this.ctx.database.upsert('jrrp', [{
+        userId,
+        date: new Date().toISOString().slice(0, 10),
+        username: this.sanitizeString(fortune.username),
+        algorithm: fortune.algorithm,
+        score: fortune.score
+      }])
+      return true
+    } catch (e) {
+      return false
+    }
   }
 
   /**
    * 获取所有今日人品数据，按分数排序
-   * @returns {Promise<Array<{userId: string, data: FortuneData}>>} 所有用户今日的人品数据，按分数降序排序
    */
   async getAllTodayFortunes(): Promise<Array<{userId: string, data: FortuneData}>> {
-    const data = await this.read()
-    const todayStr = this.getLocalDateString()
-    const userIds = data.dateIndex[todayStr] || []
-
-    return userIds
-      .map(userId => ({ userId, data: data.users[userId][todayStr] }))
-      .filter(item => item.data)
-      .sort((a, b) => b.data.score - a.data.score)
+    const today = new Date().toISOString().slice(0, 10)
+    const records = await this.ctx.database
+      .select('jrrp')
+      .where({ date: today })
+      .orderBy('score', 'desc')
+      .execute()
+    return records.map(record => ({
+      userId: record.userId,
+      data: {
+        username: this.sanitizeString(record.username),
+        algorithm: record.algorithm,
+        score: record.score
+      }
+    }))
   }
 }

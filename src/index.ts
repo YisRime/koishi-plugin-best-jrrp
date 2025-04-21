@@ -5,6 +5,21 @@ import { MsgBuilder, ScoreDisplayFormat } from './msgbuilder'
 import { CodeStore } from './codestore'
 
 export const name = 'best-jrrp'
+export const inject = ['database']
+
+export const usage = `
+<div style="border-radius: 10px; border: 1px solid #ddd; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+  <h2 style="margin-top: 0; color: #4a6ee0;">📌 插件说明</h2>
+  <p>📖 <strong>使用文档</strong>：请点击左上角的 <strong>插件主页</strong> 查看插件使用文档</p>
+  <p>🔍 <strong>更多插件</strong>：可访问 <a href="https://github.com/YisRime" style="color:#4a6ee0;text-decoration:none;">苡淞的 GitHub</a> 查看本人的所有插件</p>
+</div>
+
+<div style="border-radius: 10px; border: 1px solid #ddd; padding: 16px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+  <h2 style="margin-top: 0; color: #e0574a;">❤️ 支持与反馈</h2>
+  <p>🌟 喜欢这个插件？请在 <a href="https://github.com/YisRime" style="color:#e0574a;text-decoration:none;">GitHub</a> 上给我一个 Star！</p>
+  <p>🐛 遇到问题？请通过 <strong>Issues</strong> 提交反馈，或加入 QQ 群 <a href="https://qm.qq.com/q/PdLMx9Jowq" style="color:#e0574a;text-decoration:none;"><strong>855571375</strong></a> 进行交流</p>
+</div>
+`
 
 /**
  * 人品计算算法枚举
@@ -76,8 +91,6 @@ export interface Config {
   enableScore: boolean
   /** 是否启用排行榜 */
   enableRank: boolean
-  /** 是否启用历史记录 */
-  enableHistory: boolean
   /** 是否启用识别码功能 */
   enableCode: boolean
 }
@@ -96,7 +109,6 @@ export const Config: Schema<Config> = Schema.intersect([
     enableDate: Schema.boolean().description('启用日期查询').default(true),
     enableScore: Schema.boolean().description('启用分数预测').default(true),
     enableRank: Schema.boolean().description('启用排行榜').default(true),
-    enableHistory: Schema.boolean().description('启用历史记录').default(true),
     enableCode: Schema.boolean().description('启用识别码').default(false)
   }).description('指令配置'),
   Schema.object({
@@ -153,7 +165,6 @@ function parseDate(dateStr: string): Date | null {
   const match = dateStr.match(pattern);
   // 检查是否匹配日期格式
   if (!match) return null;
-
   const currentYear = new Date().getFullYear();
   const currentCentury = Math.floor(currentYear / 100) * 100;
   let year = currentYear;
@@ -174,7 +185,6 @@ function parseDate(dateStr: string): Date | null {
     month = parseInt(match[4], 10) - 1;
     day = parseInt(match[5], 10);
   }
-
   const targetDate = new Date(year, month, day);
   return isNaN(targetDate.getTime()) ? null : targetDate;
 }
@@ -209,7 +219,7 @@ async function autoRecall(session: any, message: any, delay = 10000): Promise<vo
  */
 export function apply(ctx: Context, config: Config) {
   const calc = new FortuneCalc(config.algorithm, config.apiKey)
-  const store = new FortuneStore(ctx.baseDir)
+  const store = new FortuneStore(ctx)  // 修改这里，传入ctx而非baseDir
   const builder = new MsgBuilder({
     rangeMessages: config.rangeMessages,
     specialMessages: config.specialMessages,
@@ -275,10 +285,8 @@ export function apply(ctx: Context, config: Config) {
           algorithm: result.actualAlgorithm
         });
       }
-
       return message;
     });
-
   // 检查是否为Random.org模式
   if (config.algorithm !== JrrpAlgorithm.RANDOMORG) {
     // 检查是否启用分数预测功能
@@ -298,9 +306,9 @@ export function apply(ctx: Context, config: Config) {
             const checkDate = new Date();
             checkDate.setDate(today.getDate() + i);
             const dateStr = checkDate.toLocaleDateString();
-            const calculatedResult = await calc.calculate(session.userId, dateStr);
+            const result = await calc.calculate(session.userId, dateStr);
             // 检查是否找到匹配的分数
-            if (calculatedResult.score === score) {
+            if (result.score === score) {
               const month = checkDate.getMonth() + 1;
               const day = checkDate.getDate();
               return `你${month}月${day}日的人品值是：${score}分`;
@@ -315,27 +323,17 @@ export function apply(ctx: Context, config: Config) {
         .usage('输入日期查询该日期的人品值\n支持格式: MM.DD、YY/MM/DD、YYYY-MM-DD')
         .action(async ({ session }, date) => {
           if (!await checkUserId(session)) return;
-
-          let targetDate: Date | null;
-          if (!date) {
-            // 不提供日期时，使用当天日期
-            targetDate = new Date();
-          } else {
-            targetDate = parseDate(date);
-            // 检查日期格式是否有效
-            if (!targetDate) {
-              autoRecall(session, await session.send('日期格式不正确或无效'));
-              return;
-            }
+          let targetDate = date ? parseDate(date) : new Date();
+          if (!targetDate) {
+            autoRecall(session, await session.send('日期格式不正确或无效'));
+            return;
           }
-
           const dateStr = targetDate.toLocaleDateString();
-                    const calculatedResult = await calc.calculate(session.userId, dateStr);
-          return builder.build(calculatedResult.score, session.userId, session.username || session.userId);
+          const result = await calc.calculate(session.userId, dateStr);
+          return builder.build(result.score, session.userId, session.username || session.userId);
         });
     }
   }
-
   // 检查是否启用排行榜功能
   if (config.enableRank) {
     jrrp.subcommand('.rank', '查看今日人品排行')
@@ -346,12 +344,10 @@ export function apply(ctx: Context, config: Config) {
         if (allRanks.length === 0) {
           return '今天还没有人获取过人品值';
         }
-
         let message = '——今日人品排行——\n';
         allRanks.slice(0, 10).forEach((item, index) => {
           message += `No.${index + 1} ${item.data.username} - ${item.data.score}分\n`;
         });
-
         if (session.userId) {
           const userRank = allRanks.findIndex(item => item.userId === session.userId);
           // 检查用户是否在排行榜中
@@ -361,36 +357,6 @@ export function apply(ctx: Context, config: Config) {
         }
         return message;
       });
-
-    // 检查是否启用历史记录查询功能
-    if (config.enableHistory) {
-      jrrp.subcommand('.history', '查看人品历史')
-        .usage('显示最近15天的人品记录')
-        .action(async ({ session }) => {
-          if (!await checkUserId(session)) return;
-
-          const history = await store.getUserHistory(session.userId);
-          if (history.length === 0) {
-            return '你还没有获取过人品';
-          }
-
-          let message = `${session.username || session.userId} 的人品历史：\n`;
-          // 按每行3个记录格式化显示
-          for (let i = 0; i < history.length; i += 3) {
-            const recordsInRow = [];
-            // 处理当前行的记录
-            for (let j = i; j < Math.min(i + 3, history.length); j++) {
-              const record = history[j];
-              const dateParts = record.date.split('-');
-              const displayDate = `${dateParts[1]}-${dateParts[2]}`;
-              recordsInRow.push(`${displayDate}: ${record.score}分`);
-            }
-            // 将当前行的记录添加到消息中
-            message += recordsInRow.join(' | ') + '\n';
-          }
-          return message;
-        });
-    }
   }
 
   // 识别码功能
