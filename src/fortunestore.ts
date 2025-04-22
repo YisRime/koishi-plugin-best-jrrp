@@ -63,7 +63,7 @@ export class FortuneStore {
    * @param date 可选，指定日期，默认为今天
    */
   async getFortune(userId: string, date?: string): Promise<FortuneData | null> {
-    const actualDate = date || new Date().toISOString().slice(0, 10)
+    const actualDate = date || new Date().toLocaleDateString('sv-SE')
     const records = await this.ctx.database.get('jrrp', { userId, date: actualDate })
     if (!records.length) return null
     const { username, algorithm, score } = records[0]
@@ -81,7 +81,7 @@ export class FortuneStore {
     try {
       await this.ctx.database.upsert('jrrp', [{
         userId,
-        date: new Date().toISOString().slice(0, 10),
+        date: new Date().toLocaleDateString('sv-SE'),
         username: this.sanitizeString(fortune.username),
         algorithm: fortune.algorithm,
         score: fortune.score
@@ -96,7 +96,7 @@ export class FortuneStore {
    * 获取所有今日人品数据，按分数排序
    */
   async getAllTodayFortunes(): Promise<Array<{userId: string, data: FortuneData}>> {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = new Date().toLocaleDateString('sv-SE')
     const records = await this.ctx.database
       .select('jrrp')
       .where({ date: today })
