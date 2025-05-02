@@ -4,8 +4,8 @@ import path from 'path'
 /**
  * 用户识别码配置文件接口
  * @interface Profile
- * @property {string} code - 用户的识别码
- * @property {boolean} [unlocked] - 用户是否已解锁特殊主题
+ * @property {string} code 用户的识别码
+ * @property {boolean} [unlocked] 用户是否已解锁特殊主题
  */
 interface Profile {
   code: string;
@@ -21,9 +21,9 @@ type ProfileMap = Record<string, Profile>
 /**
  * 人品值对应的消息区间配置
  * @interface ScoreMsg
- * @property {number} min - 区间最小值
- * @property {number} max - 区间最大值
- * @property {string} message - 对应区间的消息
+ * @property {number} min 区间最小值
+ * @property {number} max 区间最大值
+ * @property {string} message 对应区间的消息
  */
 interface ScoreMsg {
   min: number
@@ -52,6 +52,7 @@ export class CodeStore {
   private secKeys: SecKeys
   /**
    * @private 不同分值区间对应的消息
+   * @type {ScoreMsg[]}
    */
   private scoreMsgs: ScoreMsg[] = [
     { min: 0, max: 10, message: '……（是百分制哦）' },
@@ -66,6 +67,7 @@ export class CodeStore {
 
   /**
    * @private 特定人品值对应的特殊消息
+   * @type {Record<number, string>}
    */
   private specialMsgs: Record<number, string> = {
     0: '？！',
@@ -96,11 +98,8 @@ export class CodeStore {
    */
   private async load(): Promise<ProfileMap> {
     try {
-      const data = await fs.readFile(this.storePath, 'utf-8')
-      return JSON.parse(data) || {}
-    } catch {
-      return {}
-    }
+      return JSON.parse(await fs.readFile(this.storePath, 'utf-8')) || {}
+    } catch { return {} }
   }
 
   /**
@@ -113,10 +112,7 @@ export class CodeStore {
     const formatted = code.trim().toUpperCase();
     if (!/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/.test(formatted)) return false;
     const profiles = await this.load()
-    profiles[uid] = {
-      code: formatted,
-      ...(profiles[uid]?.unlocked && { unlocked: true })
-    };
+    profiles[uid] = { code: formatted, ...(profiles[uid]?.unlocked && { unlocked: true }) };
     await fs.writeFile(this.storePath, JSON.stringify(profiles, null, 2))
     return true
   }
@@ -128,10 +124,7 @@ export class CodeStore {
    */
   async unlock(uid: string): Promise<void> {
     const profiles = await this.load()
-    profiles[uid] = {
-      code: profiles[uid]?.code || '',
-      unlocked: true
-    }
+    profiles[uid] = { code: profiles[uid]?.code || '', unlocked: true }
     await fs.writeFile(this.storePath, JSON.stringify(profiles, null, 2))
   }
 
@@ -170,17 +163,6 @@ export class CodeStore {
   }
 
   /**
-   * 根据人品值获取对应的消息
-   * @private
-   * @param {number} score - 人品值
-   * @returns {string} 对应的消息
-   */
-  private getScoreMessage(score: number): string {
-    return this.specialMsgs[score] ||
-      this.scoreMsgs.find(range => score >= range.min && score <= range.max)?.message || ''
-  }
-
-  /**
    * 注册命令到Koishi框架
    * @param {Object} options - 选项对象
    * @param {Function} options.checkUserId - 检查用户ID的函数
@@ -203,7 +185,9 @@ export class CodeStore {
           const targetDate = parseDate(options.d);
           if (!targetDate) return autoRecall(session, await session.send('日期格式不正确或无效'));
           const score = this.getScore(userCode, targetDate.toLocaleDateString());
-          return `<at id="${session.userId}"/>你${targetDate.getMonth() + 1}月${targetDate.getDate()}日的人品值是：${score}${this.getScoreMessage(score)}`;
+          const msg = this.specialMsgs[score] ||
+            this.scoreMsgs.find(r => score >= r.min && score <= r.max)?.message || ''
+          return `<at id="${session.userId}"/>你${targetDate.getMonth() + 1}月${targetDate.getDate()}日的人品值是：${score}${msg}`;
         }
         if (options.s !== undefined) {
           const score = options.s
@@ -214,7 +198,9 @@ export class CodeStore {
             const checkDate = new Date()
             checkDate.setDate(today.getDate() + i)
             if (this.getScore(userCode, checkDate.toLocaleDateString()) === score) {
-              return `<at id="${session.userId}"/>你${checkDate.getMonth() + 1}月${checkDate.getDate()}日的人品值是：${score}${this.getScoreMessage(score)}`
+              const msg = this.specialMsgs[score] ||
+                this.scoreMsgs.find(r => score >= r.min && score <= r.max)?.message || ''
+              return `<at id="${session.userId}"/>你${checkDate.getMonth() + 1}月${checkDate.getDate()}日的人品值是：${score}${msg}`
             }
           }
           return autoRecall(session, await session.send(`你未来十年内不会出现该人品值`))
@@ -234,7 +220,8 @@ export class CodeStore {
         }
         const isFirst = score === 100 && !profiles[session.userId]?.unlocked;
         if (score === 100) await this.unlock(session.userId);
-        let msg = this.getScoreMessage(score);
+        let msg = this.specialMsgs[score] ||
+          this.scoreMsgs.find(r => score >= r.min && score <= r.max)?.message || ''
         if (isFirst) msg += '\n' + this.unlockMsg;
         return `<at id="${session.userId}"/>你今天的人品值是：${score}${msg}`
       })

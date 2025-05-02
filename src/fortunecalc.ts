@@ -3,11 +3,11 @@ import { JrrpAlgorithm } from './index'
 /**
  * 人品计算结果接口
  * @interface FortuneResult
+ * @property {number} score 人品分数
+ * @property {JrrpAlgorithm} actualAlgorithm 实际使用的算法
  */
 export interface FortuneResult {
-  /** 人品分数 */
   score: number
-  /** 实际使用的算法 */
   actualAlgorithm: JrrpAlgorithm
 }
 
@@ -45,8 +45,15 @@ export class FortuneCalc {
     }
     // 本地算法计算
     const seed = this.generateSeed(userId, date);
-    const score = this.algorithm === JrrpAlgorithm.GAUSSIAN ?
-      this.gaussianDistribution(seed) : this.linearCongruential(seed);
+    let score: number;
+    if (this.algorithm === JrrpAlgorithm.GAUSSIAN) {
+      const u1 = Math.abs(Math.sin(seed) * 10000 % 1) || 0.0001,
+        u2 = Math.abs(Math.sin(seed + 127) * 10000 % 1) || 0.0001,
+        z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      score = Math.max(0, Math.min(100, Math.round(z * 15 + 50)));
+    } else {
+      score = Math.floor(((1664525 * seed + 1013904223) % (2 ** 32)) / (2 ** 32) * 101);
+    }
     return { score, actualAlgorithm: this.algorithm };
   }
 
@@ -66,12 +73,7 @@ export class FortuneCalc {
         body: JSON.stringify({
           jsonrpc: "2.0",
           method: "generateIntegers",
-          params: {
-            apiKey: this.apiKey,
-            n: 1,
-            min: 0,
-            max: 100
-          },
+          params: { apiKey: this.apiKey, n: 1, min: 0, max: 100 },
           id: 1
         }),
         signal: controller.signal
@@ -80,9 +82,7 @@ export class FortuneCalc {
       if (!response.ok) return null;
       const data = await response.json();
       return data?.result?.random?.data?.[0] ?? null;
-    } catch {
-      return null;
-    }
+    } catch { return null }
   }
 
   /**
@@ -93,35 +93,9 @@ export class FortuneCalc {
    * @returns {number} 生成的种子
    */
   private generateSeed(userId: string, dateStr: string): number {
-    let hash = 0;
-    const str = userId + dateStr;
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash |= 0;
-    }
+    let hash = 0, str = userId + dateStr;
+    for (let i = 0; i < str.length; i++)
+      hash = ((hash << 5) - hash) + str.charCodeAt(i), hash |= 0;
     return Math.abs(hash);
-  }
-
-  /**
-   * 使用高斯分布计算人品值
-   * @private
-   * @param {number} seed - 种子
-   * @returns {number} 人品值(0-100)
-   */
-  private gaussianDistribution(seed: number): number {
-    const u1 = Math.abs(Math.sin(seed) * 10000 % 1) || 0.0001;
-    const u2 = Math.abs(Math.sin(seed + 127) * 10000 % 1) || 0.0001;
-    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    return Math.max(0, Math.min(100, Math.round(z * 15 + 50)));
-  }
-
-  /**
-   * 使用线性同余法计算人品值
-   * @private
-   * @param {number} seed - 种子
-   * @returns {number} 人品值(0-100)
-   */
-  private linearCongruential(seed: number): number {
-    return Math.floor(((1664525 * seed + 1013904223) % (2 ** 32)) / (2 ** 32) * 101);
   }
 }

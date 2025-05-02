@@ -37,62 +37,64 @@ export const enum JrrpAlgorithm {
 /**
  * 区间消息接口
  * @interface RangeMessage
+ * @property {number} min 区间最小值
+ * @property {number} max 区间最大值
+ * @property {string} message 对应消息文本
  */
 export interface RangeMessage {
-  /** 区间最小值 */
   min: number
-  /** 区间最大值 */
   max: number
-  /** 对应消息文本 */
   message: string
 }
 
 /**
  * 特殊消息接口
  * @interface SpecialMessage
+ * @property {string|number} condition 触发条件（日期或分数）
+ * @property {string} message 对应消息文本
  */
 export interface SpecialMessage {
-  /** 触发条件（日期或分数） */
   condition: string | number
-  /** 对应消息文本 */
   message: string
 }
 
 /**
  * 插件配置接口
  * @interface Config
+ * @property {JrrpAlgorithm} algorithm 计算算法
+ * @property {string} [apiKey] Random.org API密钥
+ * @property {string} [codeHashSecret] 识别码算法密钥（6段，使用|分隔）
+ * @property {string} template 消息模板
+ * @property {Array<RangeMessage>} rangeMessages 区间消息列表
+ * @property {Array<SpecialMessage>} specialMessages 特殊消息列表
+ * @property {boolean} enableScoreFormat 是否启用分数格式化
+ * @property {string} formatDate 格式化启用日期
+ * @property {ScoreDisplayFormat} scoreFormat 分数格式化样式
+ * @property {boolean} enableRange 是否启用区间消息
+ * @property {boolean} enableSpecial 是否启用特殊消息
+ * @property {boolean} enableDate 是否启用日期查询
+ * @property {boolean} enableScore 是否启用分数预测
+ * @property {boolean} enableRank 是否启用排行榜
+ * @property {boolean} enableCode 是否启用识别码功能
+ * @property {string} [imagesUrl] 占位符"{pixiv}"数据地址
  */
 export interface Config {
-  /** 计算算法 */
   algorithm: JrrpAlgorithm
-  /** Random.org API密钥 */
   apiKey?: string
-  /** 识别码算法密钥（6段，使用|分隔） */
   codeHashSecret?: string
-  /** 消息模板 */
   template: string
-  /** 区间消息列表 */
   rangeMessages: Array<RangeMessage>
-  /** 特殊消息列表 */
   specialMessages: Array<SpecialMessage>
-  /** 是否启用分数格式化 */
   enableScoreFormat: boolean
-  /** 格式化启用日期 */
   formatDate: string
-  /** 分数格式化样式 */
   scoreFormat: ScoreDisplayFormat
-  /** 是否启用区间消息 */
   enableRange: boolean
-  /** 是否启用特殊消息 */
   enableSpecial: boolean
-  /** 是否启用日期查询 */
   enableDate: boolean
-  /** 是否启用分数预测 */
   enableScore: boolean
-  /** 是否启用排行榜 */
   enableRank: boolean
-  /** 是否启用识别码功能 */
   enableCode: boolean
+  imagesUrl?: string
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -123,8 +125,10 @@ export const Config: Schema<Config> = Schema.intersect([
     ]).description('格式化样式').default('simple')
   }).description('分数显示配置'),
   Schema.object({
-    template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{hitokoto}、{image:URL}占位符')
+    template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{~}、{hitokoto}、{pixiv}、{image:URL}占位符')
       .default('{at}你今天的人品值是：{score}{message}').role('textarea'),
+    imagesUrl: Schema.string().description('占位符"{pixiv}"数据地址').role('link')
+      .default('https://raw.githubusercontent.com/YisRime/koishi-plugin-onebot-tool/main/resource/pixiv.json'),
     enableRange: Schema.boolean().description('启用区间消息').default(true),
     rangeMessages: Schema.array(Schema.object({
       min: Schema.number().description('区间最小值').min(0).max(100).default(0),
@@ -151,7 +155,7 @@ export const Config: Schema<Config> = Schema.intersect([
       { condition: '1-1', message: '！新年快乐！' },
       { condition: '4-1', message: '！愚人节快乐！' },
       { condition: '12-25', message: '！圣诞快乐！' }
-    ]).role('table'),
+    ]).role('table')
   }).description('消息配置')
 ])
 
@@ -162,32 +166,19 @@ export const Config: Schema<Config> = Schema.intersect([
  */
 function parseDate(dateStr: string): Date | null {
   const formats = [
-    // MM-DD
     /^(\d{1,2})-(\d{1,2})$/,
-    // MM/DD or MM.DD
     /^(\d{1,2})[\/\.](\d{1,2})$/,
-    // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
     /^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/,
-    // YY-MM-DD or YY/MM/DD or YY.MM.DD
     /^(\d{2})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/
   ];
-  for (const format of formats) {
-    const match = dateStr.match(format);
-    if (!match) continue;
-    let year = new Date().getFullYear();
-    let month: number, day: number;
-    if (match.length === 3) { // MM-DD
-      month = parseInt(match[1], 10) - 1;
-      day = parseInt(match[2], 10);
-    } else if (match.length === 4 && match[1].length === 4) { // YYYY-MM-DD
-      year = parseInt(match[1], 10);
-      month = parseInt(match[2], 10) - 1;
-      day = parseInt(match[3], 10);
-    } else if (match.length === 4) { // YY-MM-DD
-      year = Math.floor(year / 100) * 100 + parseInt(match[1], 10);
-      month = parseInt(match[2], 10) - 1;
-      day = parseInt(match[3], 10);
-    } else continue;
+  for (const f of formats) {
+    const m = dateStr.match(f);
+    if (!m) continue;
+    let year = new Date().getFullYear(), month: number, day: number;
+    if (m.length === 3) { month = +m[1] - 1; day = +m[2]; }
+    else if (m.length === 4 && m[1].length === 4) { year = +m[1]; month = +m[2] - 1; day = +m[3]; }
+    else if (m.length === 4) { year = Math.floor(year / 100) * 100 + +m[1]; month = +m[2] - 1; day = +m[3]; }
+    else continue;
     const date = new Date(year, month, day);
     return isNaN(date.getTime()) ? null : date;
   }
@@ -205,15 +196,12 @@ async function autoRecall(session: any, message: any, delay = 10000): Promise<vo
   if (!message) return;
   setTimeout(async () => {
     try {
-      const messages = Array.isArray(message) ? message : [message];
-      for (const msg of messages) {
+      for (const msg of Array.isArray(message) ? message : [message]) {
         const msgId = typeof msg === 'string' ? msg : msg?.id;
-        // 检查消息ID和会话信息是否有效
-        if (msgId && session.bot && session.channelId) {
+        if (msgId && session.bot && session.channelId)
           await session.bot.deleteMessage(session.channelId, msgId);
-        }
       }
-    } catch (error) {}
+    } catch {}
   }, delay);
 }
 
@@ -229,197 +217,115 @@ export function apply(ctx: Context, config: Config) {
     rangeMessages: config.rangeMessages,
     specialMessages: config.specialMessages,
     template: config.template,
-    display: {
-      enabled: config.enableScoreFormat,
-      date: config.formatDate,
-      mode: config.scoreFormat
-    },
+    display: { enabled: config.enableScoreFormat, date: config.formatDate, mode: config.scoreFormat },
     enableRange: config.enableRange,
     enableSpecial: config.enableSpecial
+  }, {
+    baseDir: ctx.baseDir,
+    logger: ctx.logger,
+    imagesUrl: config.imagesUrl
   })
-
-  /**
-   * 检查用户ID是否有效
-   * @param {any} session - 会话对象
-   * @returns {Promise<boolean>} 用户ID是否有效
-   */
-  const checkUserId = async (session): Promise<boolean> => {
-    if (!session.userId) {
-      autoRecall(session, await session.send('无法获取用户信息'));
-      return false;
-    }
-    return true;
-  };
-
   const jrrp = ctx.command('jrrp', '今日人品')
     .action(async ({ session }) => {
-      if (!await checkUserId(session)) return;
-      // 先查询缓存
-      const cachedResult = await store.getFortune(session.userId);
-      let result: FortuneResult;
-      let needSave = false;
-      // 检查是否有有效缓存
-      if (cachedResult) {
-        // 直接使用缓存结果
-        result = {
-          score: cachedResult.score,
-          actualAlgorithm: cachedResult.algorithm as JrrpAlgorithm
-        };
-      } else {
-        // 无缓存，计算新结果
-        result = await calc.calculate(
-          session.userId, new Date().toLocaleDateString()
-        );
-        needSave = true;
+      if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
+      const cached = await store.getFortune(session.userId);
+      let result = cached ? { score: cached.score, actualAlgorithm: cached.algorithm as JrrpAlgorithm }
+        : await calc.calculate(session.userId, new Date().toLocaleDateString());
+      if (!cached) store.save(session.userId, { username: session.username || session.userId, score: result.score, algorithm: result.actualAlgorithm });
+      const msg = await builder.build(result.score, session.userId, session.username || session.userId);
+      if (Array.isArray(msg)) {
+        for (const seg of msg) await session.sendQueued(seg);
+        return;
       }
-      // 生成消息并保存结果
-      const message = await builder.build(result.score, session.userId, session.username || session.userId);
-      if (needSave) {
-        store.save(session.userId, {
-          username: session.username || session.userId,
-          score: result.score,
-          algorithm: result.actualAlgorithm
-        });
-      }
-      return message;
+      return msg;
     });
-  // 检查是否为Random.org模式
-  if (config.algorithm !== JrrpAlgorithm.RANDOMORG) {
-    // 检查是否启用分数预测功能
-    if (config.enableScore) {
-      jrrp.subcommand('.score [score:integer]', '获取指定人品值日期')
-        .usage('输入人品值查询下一次获得该值的日期')
-        .action(async ({ session }, score = 100) => {
-          if (!await checkUserId(session)) return;
-          // 确保score在0-100之间
-          if (score < 0 || score > 100) {
-            autoRecall(session, await session.send('人品值必须在 0-100 之间'));
-            return;
-          }
-          // 计算从今天开始找到匹配分数的日期
-          const today = new Date();
-          for (let i = 0; i < 3650; i++) {
-            const checkDate = new Date();
-            checkDate.setDate(today.getDate() + i);
-            const dateStr = checkDate.toLocaleDateString();
-            const result = await calc.calculate(session.userId, dateStr);
-            // 检查是否找到匹配的分数
-            if (result.score === score) {
-              const month = checkDate.getMonth() + 1;
-              const day = checkDate.getDate();
-              return `你${month}月${day}日的人品值是：${score}分`;
-            }
-          }
-          autoRecall(session, await session.send(`你未来十年内不会出现人品值是：${score}分`));
-        });
-    }
-    // 检查是否启用日期查询功能
-    if (config.enableDate) {
-      jrrp.subcommand('.date [date:string]', '获取指定日期人品值')
-        .usage('输入日期查询该日期的人品值\n支持格式: MM.DD、YY/MM/DD、YYYY-MM-DD')
-        .action(async ({ session }, date) => {
-          if (!await checkUserId(session)) return;
-          let targetDate = date ? parseDate(date) : new Date();
-          if (!targetDate) {
-            autoRecall(session, await session.send('日期格式不正确或无效'));
-            return;
-          }
-          const dateStr = targetDate.toLocaleDateString();
-          const result = await calc.calculate(session.userId, dateStr);
-          return await builder.build(result.score, session.userId, session.username || session.userId);
-        });
-    }
-  }
-  // 检查是否启用排行榜功能
-  if (config.enableRank) {
+  if (config.algorithm !== JrrpAlgorithm.RANDOMORG && config.enableScore)
+    jrrp.subcommand('.score [score:integer]', '获取指定人品值日期')
+      .usage('输入人品值查询下一次获得该值的日期')
+      .action(async ({ session }, score = 100) => {
+        if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
+        if (score < 0 || score > 100) return autoRecall(session, await session.send('人品值必须在 0-100 之间'));
+        const today = new Date();
+        for (let i = 0; i < 3650; i++) {
+          const checkDate = new Date(); checkDate.setDate(today.getDate() + i);
+          const result = await calc.calculate(session.userId, checkDate.toLocaleDateString());
+          if (result.score === score)
+            return `你${checkDate.getMonth() + 1}月${checkDate.getDate()}日的人品值是：${score}分`;
+        }
+        autoRecall(session, await session.send(`你未来十年内不会出现人品值是：${score}分`));
+      });
+  if (config.algorithm !== JrrpAlgorithm.RANDOMORG && config.enableDate)
+    jrrp.subcommand('.date [date:string]', '获取指定日期人品值')
+      .usage('输入日期查询该日期的人品值\n支持格式: MM.DD、YY/MM/DD、YYYY-MM-DD')
+      .action(async ({ session }, date) => {
+        if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
+        let targetDate = date ? parseDate(date) : new Date();
+        if (!targetDate) return autoRecall(session, await session.send('日期格式不正确或无效'));
+        const result = await calc.calculate(session.userId, targetDate.toLocaleDateString());
+        const msg = await builder.build(result.score, session.userId, session.username || session.userId);
+        if (Array.isArray(msg)) {
+          for (const seg of msg) await session.sendQueued(seg);
+          return;
+        }
+        return msg;
+      });
+  if (config.enableRank)
     jrrp.subcommand('.rank', '查看今日人品排行')
       .usage('显示今天所有获取过人品值的用户排名')
       .action(async ({ session }) => {
         const allRanks = await store.getAllTodayFortunes();
-        // 检查是否有人获取过人品值
-        if (allRanks.length === 0) {
-          return '今天还没有人获取过人品值';
-        }
-        let message = '——今日人品排行——\n';
-        allRanks.slice(0, 10).forEach((item, index) => {
-          message += `No.${index + 1} ${item.data.username} - ${item.data.score}分\n`;
-        });
+        if (!allRanks.length) return '今天还没有人获取过人品值';
+        let msg = '——今日人品排行——\n';
+        allRanks.slice(0, 10).forEach((item, i) => msg += `No.${i + 1} ${item.data.username} - ${item.data.score}分\n`);
         if (session.userId) {
           const userRank = allRanks.findIndex(item => item.userId === session.userId);
-          // 检查用户是否在排行榜中
-          message += userRank >= 0
-            ? `你位于第${userRank + 1}名（共${allRanks.length}人）`
-            : '你还没有获取今日人品';
+          msg += userRank >= 0 ? `你位于第${userRank + 1}名（共${allRanks.length}人）` : '你还没有获取今日人品';
         }
-        return message;
+        return msg;
       });
-  }
-  // 添加分析功能命令
   jrrp.subcommand('.analyse', '分析人品数据')
     .usage('分析你的人品数据统计信息')
     .action(async ({ session }) => {
-      if (!await checkUserId(session)) return;
-      // 获取用户所有历史记录与全局统计
-      const [history, globalStats] = await Promise.all([
-        store.getUserHistory(session.userId),
-        store.getGlobalStats()
-      ]);
+      if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
+      const history = await ctx.database.select('jrrp').where({ userId: session.userId }).orderBy('date', 'desc').execute();
+      const globalStats = await store.getGlobalStats();
       if (!history?.length) return '暂无人品记录可供分析';
-      // 计算基础统计数据
-      const scores = history.map(entry => entry.score);
-      const count = scores.length;
-      const sum = scores.reduce((a, b) => a + b, 0);
-      const mean = sum / count;
-      const variance = scores.reduce((acc, s) => acc + Math.pow(s - mean, 2), 0) / count;
-      const stdDev = Math.sqrt(variance);
-      const [min, max] = [Math.min(...scores), Math.max(...scores)];
-      // 计算中位数
-      const sortedScores = [...scores].sort((a, b) => a - b);
-      const median = count % 2 === 0
-        ? (sortedScores[count/2 - 1] + sortedScores[count/2]) / 2
-        : sortedScores[Math.floor(count/2)];
-      // 比较符号
-      const avgComp = mean > globalStats.avgScore ? '>' : '<';
-      const stdComp = stdDev < globalStats.stdDev ? '<' : '>';
-      // 构建结果消息
-      const message = [
+      const scores = history.map(e => e.score), count = scores.length, sum = scores.reduce((a, b) => a + b, 0),
+        mean = sum / count, variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count,
+        stdDev = Math.sqrt(variance), [min, max] = [Math.min(...scores), Math.max(...scores)],
+        sorted = [...scores].sort((a, b) => a - b), median = count % 2 ? sorted[Math.floor(count / 2)] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
+      let avgComp = '', stdComp = '';
+      if (globalStats && typeof globalStats.avgScore === 'number' && globalStats.count > 0) {
+        avgComp = mean > globalStats.avgScore ? '>' : (mean < globalStats.avgScore ? '<' : '=');
+        stdComp = stdDev < globalStats.stdDev ? '<' : (stdDev > globalStats.stdDev ? '>' : '=');
+      }
+      const msg = [
         `——${session.username}的人品分析——`,
-        `平均分: ${mean.toFixed(1)} ${avgComp} ${globalStats.avgScore.toFixed(1)}`,
-        `中位数: ${median.toFixed(1)} | ${min}-${max}`,
-        `标准差: ${stdDev.toFixed(1)} ${stdComp} ${globalStats.stdDev.toFixed(1)}`,
+        `平均分: ${mean.toFixed(1)}${avgComp ? ' ' + avgComp + ' ' + globalStats.avgScore.toFixed(1) : ''}`,
+        `中位数: ${median.toFixed(1)} ↓${min}↑${max}`,
+        `标准差: ${stdDev.toFixed(1)}${stdComp ? ' ' + stdComp + ' ' + globalStats.stdDev.toFixed(1) : ''}`,
         `——近期记录——`
       ];
-      // 显示最近记录
-      const recentScores = history.slice(0, 10).map(entry => entry.score);
-      for (let i = 0; i < recentScores.length; i += 5) {
-        const row = recentScores.slice(i, i + 5).map(score => score.toString().padStart(2));
-        message.push(row.join(' | '));
-      }
-      return message.join('\n');
+      for (let i = 0, recent = history.slice(0, 10).map(e => e.score); i < recent.length; i += 5)
+        msg.push(recent.slice(i, i + 5).map(s => s.toString().padStart(2)).join(' | '));
+      return msg.join('\n');
     });
-  // 添加清除数据的命令
   jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })
     .usage('清除人品数据')
     .option('user', '-u <userId> 指定用户ID')
     .option('date', '-d <date> 指定日期')
     .action(async ({ options }) => {
       const { user: userId, date: dateInput } = options;
-      // 处理日期参数
       let dateStr: string;
       if (dateInput) {
         const parsedDate = parseDate(dateInput);
         if (!parsedDate) return '日期格式不正确';
         dateStr = parsedDate.toISOString().slice(0, 10);
       }
-      // 执行清除并返回结果
       const count = await store.clearData(userId, dateStr);
-      const target = [
-        userId && `用户:${userId}`,
-        dateStr && `日期:${dateInput}`
-      ].filter(Boolean).join('、') || '全部';
+      const target = [userId && `用户:${userId}`, dateStr && `日期:${dateInput}`].filter(Boolean).join('、') || '全部';
       return `成功删除了${target}的${count}条记录`;
     });
-  // 识别码功能
   if (config.enableCode && config.codeHashSecret) {
     const hashKeys = config.codeHashSecret.split('|');
     if (hashKeys.length >= 6) {
@@ -427,8 +333,13 @@ export function apply(ctx: Context, config: Config) {
         key1: hashKeys[0], key2: hashKeys[1], key3: hashKeys[2],
         key4: hashKeys[3], key5: hashKeys[4], key6: hashKeys[5]
       });
-      // 注册识别码命令
-      codeStore.registerCommands({ checkUserId, autoRecall, parseDate, jrrp });
+      codeStore.registerCommands({
+        checkUserId: async (session) => {
+          if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return false }
+          return true
+        },
+        autoRecall, parseDate, jrrp
+      });
     }
   }
 }
