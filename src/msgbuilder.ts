@@ -232,7 +232,6 @@ export class MsgBuilder {
       if (Array.isArray(arr) && arr.length) {
         const candidate = arr[Math.floor(Math.random() * arr.length)]
         try {
-          this.pixivConfig.logger.info('发送图片:', candidate);
           const res = await fetch(candidate, { headers: { 'Referer': 'https://www.pixiv.net/' } })
           if (res.ok) {
             const buffer = Buffer.from(await res.arrayBuffer())

@@ -1,5 +1,5 @@
 import { Context, Schema } from 'koishi'
-import { FortuneCalc, FortuneResult } from './fortunecalc'
+import { FortuneCalc } from './fortunecalc'
 import { FortuneStore } from './fortunestore'
 import { MsgBuilder, ScoreDisplayFormat } from './msgbuilder'
 import { CodeStore } from './codestore'
