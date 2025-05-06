@@ -76,7 +76,7 @@ export interface SpecialMessage {
  * @property {boolean} enableScore 是否启用分数预测
  * @property {boolean} enableRank 是否启用排行榜
  * @property {boolean} enableCode 是否启用识别码功能
- * @property {string} [imagesUrl] 占位符"{pixiv}"数据地址
+ * @property {string} [imagesPath] 占位符"{pixiv}"数据地址，可以是网址或本地目录
  */
 export interface Config {
   algorithm: JrrpAlgorithm
@@ -94,7 +94,7 @@ export interface Config {
   enableScore: boolean
   enableRank: boolean
   enableCode: boolean
-  imagesUrl?: string
+  imagesPath?: string
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -127,7 +127,7 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     template: Schema.string().description('消息内容，支持{at}、{username}、{score}、{message}、{~}、{hitokoto}、{pixiv}、{image:URL}占位符')
       .default('{at}你今天的人品值是：{score}{message}').role('textarea'),
-    imagesUrl: Schema.string().description('占位符"{pixiv}"数据地址').role('link')
+    imagesPath: Schema.string().description('占位符"{pixiv}"数据地址')
       .default('https://raw.githubusercontent.com/YisRime/koishi-plugin-onebot-tool/main/resource/pixiv.json'),
     enableRange: Schema.boolean().description('启用区间消息').default(true),
     rangeMessages: Schema.array(Schema.object({
@@ -223,7 +223,7 @@ export function apply(ctx: Context, config: Config) {
   }, {
     baseDir: ctx.baseDir,
     logger: ctx.logger,
-    imagesUrl: config.imagesUrl
+    imagesPath: config.imagesPath
   })
   const jrrp = ctx.command('jrrp', '今日人品')
     .action(async ({ session }) => {

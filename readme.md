@@ -60,7 +60,7 @@ scoreFormat: 'simple'      # 格式化样式：binary(二进制)/octal(八进制
 
 ```yaml
 template: '{at}你今天的人品值是：{score}{message}\n{hitokoto}'  # 消息模板，支持{at}、{username}、{score}、{message}、{hitokoto}、{pixiv}、{image:URL}占位符
-imagesUrl: 'https://raw.githubusercontent.com/YisRime/koishi-plugin-onebot-tool/main/resource/pixiv.json'  # 占位符"{pixiv}"数据地址
+imagesPath: 'https://raw.githubusercontent.com/YisRime/koishi-plugin-onebot-tool/main/resource/pixiv.json'  # 占位符"{pixiv}"数据地址
 enableRange: true   # 启用区间消息
 enableSpecial: true # 启用特殊消息
 
@@ -135,8 +135,8 @@ specialMessages:
 {at}: @用户、{username}: 用户名、{score}: 用户获得的分数、{message}: 区间消息或特殊消息；
 {hitokoto}: 一言，支持参数，如{hitokoto:c=a&c=b}、{image:URL}: 将 URL 替换为图片链接，返回对应图片。
 {pixiv}占位符支持返回自定义的图片，默认数据源自于 [Omega Miya](https://github.com/Ailitonia/omega-miya)，本人仅作简单处理。
-若需自定义，请自行配置 JSON 并置于 `data` 目录，或设置 `imagesUrl` 以直接下载远端数据，存在本地文件时不会下载远端数据。
-图片数据格式为每行一个图片直链，已自动添加 Referer 请求头，无需特殊处理即可获取 Pixiv 图片。
+若需自定义图片数据，请设置 `imagesPath` 以使用本地文件夹或下载外置链接列表。
+下载 JSON 数据格式为每行一个图片直链，已自动添加 Referer 请求头，无需特殊处理即可获取 Pixiv 图片。
 支持显示多行文本，使用 \n 进行换行，支持显示多段文本，使用{~}占位符进行分隔。
 区间消息和特殊消息支持触发条件重复，如果重复则会随机选择一条进行显示。
 

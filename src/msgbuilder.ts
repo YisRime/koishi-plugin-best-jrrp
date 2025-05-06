@@ -1,5 +1,7 @@
 import { RangeMessage, SpecialMessage } from './index'
 import { expressions } from './expressions'
+import { promises as fs } from 'fs'
+import { resolve, join, extname } from 'path'
 
 /**
  * 分数显示格式的类型定义
@@ -26,7 +28,7 @@ interface ScoreDisplayConfig {
 
 // Pixiv配置接口
 interface PixivConfig {
-  imagesUrl?: string
+  imagesPath?: string
   baseDir?: string
   logger?: any
 }
@@ -138,31 +140,53 @@ export class MsgBuilder {
    * 获取Pixiv图片链接数组（本地无则自动下载）
    */
   private async getPixivLinks(): Promise<string[]> {
-    const { baseDir = process.cwd(), imagesUrl, logger = console } = this.pixivConfig
-    if (!imagesUrl) return []
-    const { resolve } = await import('path')
-    const { existsSync } = await import('fs')
-    const { readFile, writeFile } = await import('fs/promises')
-    const filePath = resolve(baseDir, 'data', 'pixiv.json')
-    if (!existsSync(filePath)) {
+    const { baseDir = process.cwd(), imagesPath, logger = console } = this.pixivConfig
+    if (!imagesPath) return []
+    // 判断是本地路径还是URL
+    const isLocalPath = !imagesPath.startsWith('http://') && !imagesPath.startsWith('https://');
+    if (isLocalPath) {
+      // 处理本地目录
       try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 30000)
-        const res = await fetch(imagesUrl, { signal: controller.signal })
-        clearTimeout(timeout)
-        if (!res.ok) throw new Error(`下载失败: ${res.status}`)
-        await writeFile(filePath, await res.text(), 'utf8')
+        let dirPath = imagesPath;
+        if (!dirPath.startsWith('/') && !dirPath.match(/^[A-Za-z]:\\/)) {
+          dirPath = resolve(baseDir, dirPath);
+        }
+        // 读取目录下所有文件
+        const files = await fs.readdir(dirPath, { withFileTypes: true });
+        const imageFiles = files
+          .filter(file => file.isFile() && /\.(jpe?g|png|gif|webp)$/i.test(file.name))
+          .map(file => join(dirPath, file.name));
+        return imageFiles;
       } catch (e) {
-        logger.error('下载JSON文件失败:', e)
-        return []
+        logger.error('读取本地图片目录失败:', e);
+        return [];
       }
-    }
-    try {
-      const arr = JSON.parse(await readFile(filePath, 'utf8'))
-      return Array.isArray(arr) ? arr : []
-    } catch (e) {
-      logger.error('读取链接失败:', e)
-      return []
+    } else {
+      // 处理远程JSON链接
+      const { resolve } = await import('path');
+      const { existsSync } = await import('fs');
+      const { readFile, writeFile } = await import('fs/promises');
+      const filePath = resolve(baseDir, 'data', 'pixiv.json');
+      if (!existsSync(filePath)) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 30000);
+          const res = await fetch(imagesPath, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (!res.ok) throw new Error(`下载失败: ${res.status}`);
+          await writeFile(filePath, await res.text(), 'utf8');
+        } catch (e) {
+          logger.error('下载JSON文件失败:', e);
+          return [];
+        }
+      }
+      try {
+        const arr = JSON.parse(await readFile(filePath, 'utf8'));
+        return Array.isArray(arr) ? arr : [];
+      } catch (e) {
+        logger.error('读取链接失败:', e);
+        return [];
+      }
     }
   }
 
@@ -232,15 +256,30 @@ export class MsgBuilder {
       if (Array.isArray(arr) && arr.length) {
         const candidate = arr[Math.floor(Math.random() * arr.length)]
         try {
-          const res = await fetch(candidate, { headers: { 'Referer': 'https://www.pixiv.net/' } })
-          if (res.ok) {
-            const buffer = Buffer.from(await res.arrayBuffer())
-            const ext = candidate.split('.').pop()?.toLowerCase() || 'jpg'
-            const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg'
-            content = `<image src="base64://${buffer.toString('base64')}" type="${mime}"/>`
+          let buffer: Buffer;
+          let mime: string;
+          // 判断是本地文件还是远程URL
+          if (candidate.startsWith('http://') || candidate.startsWith('https://')) {
+            // 远程URL
+            const res = await fetch(candidate, { headers: { 'Referer': 'https://www.pixiv.net/' } })
+            if (res.ok) {
+              buffer = Buffer.from(await res.arrayBuffer())
+              const ext = candidate.split('.').pop()?.toLowerCase() || 'jpg'
+              mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg'
+            } else {
+              throw new Error(`请求失败: ${res.status}`)
+            }
+          } else {
+            // 本地文件
+            buffer = await fs.readFile(candidate)
+            const ext = extname(candidate).slice(1).toLowerCase()
+            mime = ext === 'png' ? 'image/png' :
+                   ext === 'gif' ? 'image/gif' :
+                   ext === 'webp' ? 'image/webp' : 'image/jpeg'
           }
+          content = `<image src="base64://${buffer.toString('base64')}" type="${mime}"/>`
         } catch (e) {
-          this.pixivConfig.logger.error('图片发送失败:', e)
+          this.pixivConfig.logger?.error('图片处理失败:', e)
         }
       }
       return { pattern: m[0], content }
