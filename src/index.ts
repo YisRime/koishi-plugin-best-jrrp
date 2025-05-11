@@ -301,9 +301,9 @@ export function apply(ctx: Context, config: Config) {
       }
       const msg = [
         `——${session.username}的人品分析——`,
-        `平均分: ${mean.toFixed(1)}${avgComp ? ' ' + avgComp + ' ' + globalStats.avgScore.toFixed(1) : ''}`,
+        `平均分: ${mean.toFixed(1)}${avgComp ? ` ${avgComp} ${globalStats.avgScore.toFixed(1)}` : ''}`,
         `中位数: ${median.toFixed(1)} ↓${min}↑${max}`,
-        `标准差: ${stdDev.toFixed(1)}${stdComp ? ' ' + stdComp + ' ' + globalStats.stdDev.toFixed(1) : ''}`,
+        `标准差: ${stdDev.toFixed(1)}${stdComp ? ` ${stdComp} ${globalStats.stdDev.toFixed(1)}` : ''}`,
         `——近期记录——`
       ];
       for (let i = 0, recent = history.slice(0, 10).map(e => e.score); i < recent.length; i += 5)

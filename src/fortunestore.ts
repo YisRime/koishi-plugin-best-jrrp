@@ -118,7 +118,7 @@ export class FortuneStore {
       .select('jrrp').where({ date: today }).orderBy('score', 'desc').execute()
     return records.map(r => ({
       userId: r.userId,
-      data: { username: this.sanitizeString(r.username), algorithm: r.algorithm, score: r.score }
+      data: { username: r.username, algorithm: r.algorithm, score: r.score }
     }))
   }
 
