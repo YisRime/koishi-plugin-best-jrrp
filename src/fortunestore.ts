@@ -84,7 +84,7 @@ export class FortuneStore {
     const records = await this.ctx.database.get('jrrp', { userId, date: actualDate })
     if (!records.length) return null
     const { username, algorithm, score } = records[0]
-    return { username: this.sanitizeString(username), algorithm, score }
+    return { username: username, algorithm, score }
   }
 
   /**
@@ -147,10 +147,32 @@ export class FortuneStore {
   async getGlobalStats(): Promise<{
     count: number; avgScore: number; maxScore: number; minScore: number; stdDev: number;
   }> {
-    const records = await this.ctx.database.select('jrrp').execute();
-    if (!records.length) return { count: 0, avgScore: 0, maxScore: 0, minScore: 0, stdDev: 0 }
-    const scores = records.map(e => e.score), count = scores.length, sum = scores.reduce((a, b) => a + b, 0),
-      mean = sum / count, variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count
-    return { count, avgScore: mean, maxScore: Math.max(...scores), minScore: Math.min(...scores), stdDev: Math.sqrt(variance) }
+    try {
+      const records = await this.ctx.database.select('jrrp').execute();
+      this.ctx.logger('jrrp').info(`统计全局数据: 获取到 ${records.length} 条记录`);
+      if (!records.length) {
+        this.ctx.logger('jrrp').info('统计全局数据: 无有效记录');
+        return { count: 0, avgScore: 0, maxScore: 0, minScore: 0, stdDev: 0 }
+      }
+      const scores = records.map(e => e.score);
+      const count = scores.length;
+      const sum = scores.reduce((a, b) => a + b, 0);
+      const mean = sum / count;
+      const variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count;
+      const stdDev = Math.sqrt(variance);
+      const min = Math.min(...scores);
+      const max = Math.max(...scores);
+      this.ctx.logger('jrrp').info(`统计全局数据: 总分 ${sum}, 平均分 ${mean.toFixed(2)}, 标准差 ${stdDev.toFixed(2)}, 最小值 ${min}, 最大值 ${max}`);
+      return {
+        count,
+        avgScore: mean,
+        maxScore: max,
+        minScore: min,
+        stdDev
+      }
+    } catch (error) {
+      this.ctx.logger('jrrp').error(`统计全局数据出错: ${error}`);
+      return { count: 0, avgScore: 0, maxScore: 0, minScore: 0, stdDev: 0 }
+    }
   }
 }

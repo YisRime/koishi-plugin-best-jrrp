@@ -288,16 +288,25 @@ export function apply(ctx: Context, config: Config) {
     .action(async ({ session }) => {
       if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
       const history = await ctx.database.select('jrrp').where({ userId: session.userId }).orderBy('date', 'desc').execute();
+      ctx.logger('jrrp').info(`获取到用户 ${session.userId} 的 ${history?.length || 0} 条历史记录`);
       const globalStats = await store.getGlobalStats();
       if (!history?.length) return '暂无人品记录可供分析';
-      const scores = history.map(e => e.score), count = scores.length, sum = scores.reduce((a, b) => a + b, 0),
-        mean = sum / count, variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count,
-        stdDev = Math.sqrt(variance), [min, max] = [Math.min(...scores), Math.max(...scores)],
-        sorted = [...scores].sort((a, b) => a - b), median = count % 2 ? sorted[Math.floor(count / 2)] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
+      const scores = history.map(e => e.score);
+      const count = scores.length;
+      const sum = scores.reduce((a, b) => a + b, 0);
+      const mean = sum / count;
+      const variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count;
+      const stdDev = Math.sqrt(variance);
+      const min = Math.min(...scores);
+      const max = Math.max(...scores);
+      const sorted = [...scores].sort((a, b) => a - b);
+      const median = count % 2 ? sorted[Math.floor(count / 2)] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
+      ctx.logger('jrrp').info(`用户 ${session.userId} 分析结果: 记录数 ${count}, 总分 ${sum}, 平均分 ${mean.toFixed(1)}, 中位数 ${median.toFixed(1)}, 标准差 ${stdDev.toFixed(1)}, 区间 ${min}~${max}`);
       let avgComp = '', stdComp = '';
       if (globalStats && typeof globalStats.avgScore === 'number' && globalStats.count > 0) {
         avgComp = mean > globalStats.avgScore ? '>' : (mean < globalStats.avgScore ? '<' : '=');
         stdComp = stdDev < globalStats.stdDev ? '<' : (stdDev > globalStats.stdDev ? '>' : '=');
+        ctx.logger('jrrp').info(`用户 ${session.userId} 与全体比较: 平均分 ${avgComp} ${globalStats.avgScore.toFixed(1)}, 标准差 ${stdComp} ${globalStats.stdDev.toFixed(1)}`);
       }
       const msg = [
         `——${session.username}的人品分析——`,
