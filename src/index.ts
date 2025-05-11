@@ -287,36 +287,25 @@ export function apply(ctx: Context, config: Config) {
     .usage('分析你的人品数据统计信息')
     .action(async ({ session }) => {
       if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
-      const history = await ctx.database.select('jrrp').where({ userId: session.userId }).orderBy('date', 'desc').execute();
-      ctx.logger('jrrp').info(`获取到用户 ${session.userId} 的 ${history?.length || 0} 条历史记录`);
-      const globalStats = await store.getGlobalStats();
-      if (!history?.length) return '暂无人品记录可供分析';
-      const scores = history.map(e => e.score);
-      const count = scores.length;
-      const sum = scores.reduce((a, b) => a + b, 0);
-      const mean = sum / count;
-      const variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count;
-      const stdDev = Math.sqrt(variance);
-      const min = Math.min(...scores);
-      const max = Math.max(...scores);
-      const sorted = [...scores].sort((a, b) => a - b);
-      const median = count % 2 ? sorted[Math.floor(count / 2)] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
-      ctx.logger('jrrp').info(`用户 ${session.userId} 分析结果: 记录数 ${count}, 总分 ${sum}, 平均分 ${mean.toFixed(1)}, 中位数 ${median.toFixed(1)}, 标准差 ${stdDev.toFixed(1)}, 区间 ${min}~${max}`);
-      let avgComp = '', stdComp = '';
-      if (globalStats && typeof globalStats.avgScore === 'number' && globalStats.count > 0) {
-        avgComp = mean > globalStats.avgScore ? '>' : (mean < globalStats.avgScore ? '<' : '=');
-        stdComp = stdDev < globalStats.stdDev ? '<' : (stdDev > globalStats.stdDev ? '>' : '=');
-        ctx.logger('jrrp').info(`用户 ${session.userId} 与全体比较: 平均分 ${avgComp} ${globalStats.avgScore.toFixed(1)}, 标准差 ${stdComp} ${globalStats.stdDev.toFixed(1)}`);
-      }
+      const stats = await store.getStatsComparison(session.userId);
+      if (stats.user.count === 0) return '暂无人品记录可供分析';
+      const getCompareSymbol = (user: number, global: number) => {
+        if (user > global) return '▲';
+        if (user < global) return '▼';
+        return '━';
+      };
       const msg = [
         `——${session.username}的人品分析——`,
-        `平均分: ${mean.toFixed(1)}${avgComp ? ` ${avgComp} ${globalStats.avgScore.toFixed(1)}` : ''}`,
-        `中位数: ${median.toFixed(1)} ↓${min}↑${max}`,
-        `标准差: ${stdDev.toFixed(1)}${stdComp ? ` ${stdComp} ${globalStats.stdDev.toFixed(1)}` : ''}`,
+        `平均分: ${stats.user.mean.toFixed(1)} ${getCompareSymbol(stats.user.mean, stats.global.mean)} ${stats.global.mean.toFixed(1)}`,
+        `中位数: ${stats.user.median.toFixed(1)} [${stats.user.min}~${stats.user.max}]`,
+        `标准差: ${stats.user.stdDev.toFixed(1)} ${getCompareSymbol(stats.user.stdDev, stats.global.stdDev)} ${stats.global.stdDev.toFixed(1)}`,
         `——近期记录——`
       ];
-      for (let i = 0, recent = history.slice(0, 10).map(e => e.score); i < recent.length; i += 5)
-        msg.push(recent.slice(i, i + 5).map(s => s.toString().padStart(2)).join(' | '));
+      if (stats.user.recentScores && stats.user.recentScores.length > 0) {
+        for (let i = 0; i < stats.user.recentScores.length; i += 5) {
+          msg.push(stats.user.recentScores.slice(i, i + 5).map(s => s.toString().padStart(3)).join(' | '));
+        }
+      }
       return msg.join('\n');
     });
   jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })

@@ -40,6 +40,38 @@ export interface FortuneData {
 }
 
 /**
+ * 简化的统计分析结果接口
+ * @interface AnalysisResult
+ * @property {number} count 记录数量
+ * @property {number} mean 平均分
+ * @property {number} median 中位数
+ * @property {number} stdDev 标准差
+ * @property {number} min 最低分
+ * @property {number} max 最高分
+ * @property {number[]} recentScores 最近的分数
+ */
+export interface AnalysisResult {
+  count: number
+  mean: number
+  median: number
+  stdDev: number
+  min: number
+  max: number
+  recentScores?: number[]
+}
+
+/**
+ * 统计数据比较结果
+ * @interface StatsComparison
+ * @property {AnalysisResult} user 用户统计数据
+ * @property {AnalysisResult} global 全局统计数据
+ */
+export interface StatsComparison {
+  user: AnalysisResult
+  global: AnalysisResult
+}
+
+/**
  * 人品数据存储类
  * @class FortuneStore
  */
@@ -141,38 +173,43 @@ export class FortuneStore {
   }
 
   /**
-   * 获取全局人品统计数据
-   * @returns {Promise<{count: number; avgScore: number; maxScore: number; minScore: number; stdDev: number;}>}
+   * 获取用户和全局统计数据的比较
+   * @param {string} userId 用户ID
+   * @returns {Promise<StatsComparison>} 用户和全局统计数据比较结果
    */
-  async getGlobalStats(): Promise<{
-    count: number; avgScore: number; maxScore: number; minScore: number; stdDev: number;
-  }> {
+  async getStatsComparison(userId: string): Promise<StatsComparison> {
     try {
-      const records = await this.ctx.database.select('jrrp').execute();
-      this.ctx.logger('jrrp').info(`统计全局数据: 获取到 ${records.length} 条记录`);
-      if (!records.length) {
-        this.ctx.logger('jrrp').info('统计全局数据: 无有效记录');
-        return { count: 0, avgScore: 0, maxScore: 0, minScore: 0, stdDev: 0 }
-      }
-      const scores = records.map(e => e.score);
-      const count = scores.length;
-      const sum = scores.reduce((a, b) => a + b, 0);
-      const mean = sum / count;
-      const variance = scores.reduce((a, s) => a + (s - mean) ** 2, 0) / count;
-      const stdDev = Math.sqrt(variance);
-      const min = Math.min(...scores);
-      const max = Math.max(...scores);
-      this.ctx.logger('jrrp').info(`统计全局数据: 总分 ${sum}, 平均分 ${mean.toFixed(2)}, 标准差 ${stdDev.toFixed(2)}, 最小值 ${min}, 最大值 ${max}`);
-      return {
-        count,
-        avgScore: mean,
-        maxScore: max,
-        minScore: min,
-        stdDev
-      }
+      const cutoffDateStr = new Date(Date.now() - 15 * 24 * 3600 * 1000).toLocaleDateString('sv-SE');
+      const [globalRecords, userRecords] = await Promise.all([
+        this.ctx.database.select('jrrp').where({ date: { $gte: cutoffDateStr } }).execute(),
+        this.ctx.database.select('jrrp').where({ date: { $gte: cutoffDateStr }, userId }).orderBy('date', 'desc').execute()
+      ]);
+      return { user: this.analyzeData(userRecords, 10), global: this.analyzeData(globalRecords) };
     } catch (error) {
-      this.ctx.logger('jrrp').error(`统计全局数据出错: ${error}`);
-      return { count: 0, avgScore: 0, maxScore: 0, minScore: 0, stdDev: 0 }
+      const emptyResult: AnalysisResult = { count: 0, mean: 0, median: 0, stdDev: 0, min: 0, max: 0, recentScores: [] };
+      return { user: emptyResult, global: emptyResult };
     }
+  }
+
+  /**
+   * 分析人品数据集合
+   * @param {JrrpEntry[]} records 人品记录集合
+   * @param {number} [recentLimit] 最近记录的限制数量
+   * @returns {AnalysisResult} 分析结果
+   */
+  analyzeData(records: JrrpEntry[], recentLimit?: number): AnalysisResult {
+    if (!records?.length) return { count: 0, mean: 0, median: 0, stdDev: 0, min: 0, max: 0, recentScores: [] };
+    const scores = records.map(e => e.score);
+    const count = scores.length;
+    const sorted = [...scores].sort((a, b) => a - b);
+    const sum = scores.reduce((a, b) => a + b, 0);
+    const mean = sum / count;
+    const stdDev = Math.sqrt(scores.reduce((a, s) => a + Math.pow(s - mean, 2), 0) / count);
+    return {
+      count, mean,
+      median: count % 2 ? sorted[Math.floor(count / 2)] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2,
+      stdDev, min: sorted[0], max: sorted[count - 1],
+      recentScores: recentLimit ? scores.slice(0, recentLimit) : undefined
+    };
   }
 }
