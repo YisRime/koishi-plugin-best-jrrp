@@ -63,7 +63,7 @@ export interface SpecialMessage {
  * @interface Config
  * @property {JrrpAlgorithm} algorithm 计算算法
  * @property {string} [apiKey] Random.org API密钥
- * @property {string} [codeHashSecret] 识别码算法密钥（6段，使用|分隔）
+ * @property {string|false} enableCode 识别码配置，字符串为密钥，false则禁用
  * @property {string} template 消息模板
  * @property {Array<RangeMessage>} rangeMessages 区间消息列表
  * @property {Array<SpecialMessage>} specialMessages 特殊消息列表
@@ -75,13 +75,12 @@ export interface SpecialMessage {
  * @property {boolean} enableDate 是否启用日期查询
  * @property {boolean} enableScore 是否启用分数预测
  * @property {boolean} enableRank 是否启用排行榜
- * @property {boolean} enableCode 是否启用识别码功能
  * @property {string} [imagesPath] 占位符"{pixiv}"数据地址，可以是网址或本地目录
  */
 export interface Config {
   algorithm: JrrpAlgorithm
-  apiKey?: string
-  codeHashSecret?: string
+  apiKey: string
+  enableCode: string | false
   template: string
   rangeMessages: Array<RangeMessage>
   specialMessages: Array<SpecialMessage>
@@ -93,26 +92,25 @@ export interface Config {
   enableDate: boolean
   enableScore: boolean
   enableRank: boolean
-  enableCode: boolean
   imagesPath?: string
 }
 
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
+    enableDate: Schema.boolean().description('启用日期查询').default(true),
+    enableScore: Schema.boolean().description('启用分数预测').default(true),
+    enableRank: Schema.boolean().description('启用分数排行').default(true),
+    enableCode: Schema.union([
+      Schema.const(false).description('禁用'),
+      Schema.string().description('启用').role('secret')
+    ]).description('启用识别码').default(false),
     algorithm: Schema.union([
       Schema.const(JrrpAlgorithm.GAUSSIAN).description('算法 - 正态分布'),
       Schema.const(JrrpAlgorithm.LINEAR).description('算法 - 线性同余'),
       Schema.const(JrrpAlgorithm.RANDOMORG).description('真随机 - Random.org')
-    ]).default(JrrpAlgorithm.LINEAR).description('计算模式'),
-    apiKey: Schema.string().description('密钥 - Random.org API').role('secret'),
-    codeHashSecret: Schema.string().description('密钥 - 识别码算法').role('secret')
-  }).description('算法配置'),
-  Schema.object({
-    enableDate: Schema.boolean().description('启用日期查询').default(true),
-    enableScore: Schema.boolean().description('启用分数预测').default(true),
-    enableRank: Schema.boolean().description('启用排行榜').default(true),
-    enableCode: Schema.boolean().description('启用识别码').default(false)
-  }).description('指令配置'),
+    ]).default(JrrpAlgorithm.LINEAR).description('计算算法/方式'),
+    apiKey: Schema.string().description('密钥 - Random.org API').role('secret')
+  }).description('基础配置'),
   Schema.object({
     enableScoreFormat: Schema.boolean().description('启用格式化显示').default(true),
     formatDate: Schema.string().description('启用日期（留空保持开启）').pattern(/^\d{1,2}-\d{1,2}$/).default('4-1'),
@@ -325,8 +323,8 @@ export function apply(ctx: Context, config: Config) {
       const target = [userId && `用户:${userId}`, dateStr && `日期:${dateInput}`].filter(Boolean).join('、') || '全部';
       return `成功删除了${target}的${count}条记录`;
     });
-  if (config.enableCode && config.codeHashSecret) {
-    const hashKeys = config.codeHashSecret.split('|');
+  if (config.enableCode && typeof config.enableCode === 'string') {
+    const hashKeys = config.enableCode.split('|');
     if (hashKeys.length >= 6) {
       const codeStore = new CodeStore(ctx.baseDir, {
         key1: hashKeys[0], key2: hashKeys[1], key3: hashKeys[2],
