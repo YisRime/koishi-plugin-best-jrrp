@@ -226,6 +226,7 @@ export function apply(ctx: Context, config: Config) {
     imagesPath: config.imagesPath
   })
   const jrrp = ctx.command('jrrp', '今日人品')
+    .usage('查询今日人品值' + (config.algorithm === JrrpAlgorithm.RANDOMORG ? '（真随机模式）' : ''))
     .action(async ({ session }) => {
       if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
       const cached = await store.getFortune(session.userId);
@@ -284,7 +285,7 @@ export function apply(ctx: Context, config: Config) {
         return msg;
       });
   jrrp.subcommand('.analyse', '分析人品数据')
-    .usage('分析你的人品数据统计信息')
+    .usage('分析你近15天的人品数据统计')
     .action(async ({ session }) => {
       if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
       const stats = await store.getStatsComparison(session.userId);
@@ -296,14 +297,14 @@ export function apply(ctx: Context, config: Config) {
       };
       const msg = [
         `——${session.username}的人品分析——`,
-        `平均分: ${stats.user.mean.toFixed(1)} ${getCompareSymbol(stats.user.mean, stats.global.mean)} ${stats.global.mean.toFixed(1)}`,
-        `中位数: ${stats.user.median.toFixed(1)} [${stats.user.min}~${stats.user.max}]`,
-        `标准差: ${stats.user.stdDev.toFixed(1)} ${getCompareSymbol(stats.user.stdDev, stats.global.stdDev)} ${stats.global.stdDev.toFixed(1)}`,
+        `平均分: ${stats.user.mean.toFixed(1)} ${getCompareSymbol(stats.user.mean, stats.global.mean)} [${stats.global.mean.toFixed(1)}]`,
+        `中位数: ${stats.user.median.toFixed(1)}  [${stats.user.min}~${stats.user.max}]`,
+        `标准差: ${stats.user.stdDev.toFixed(1)} ${getCompareSymbol(stats.user.stdDev, stats.global.stdDev)} [${stats.global.stdDev.toFixed(1)}]`,
         `——近期记录——`
       ];
       if (stats.user.recentScores && stats.user.recentScores.length > 0) {
         for (let i = 0; i < stats.user.recentScores.length; i += 5) {
-          msg.push(stats.user.recentScores.slice(i, i + 5).map(s => s.toString().padStart(3)).join(' | '));
+          msg.push(stats.user.recentScores.slice(i, i + 5).map(s => s.toString().padStart(2)).join(' | '));
         }
       }
       return msg.join('\n');
