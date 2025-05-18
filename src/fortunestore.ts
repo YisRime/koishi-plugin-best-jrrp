@@ -55,7 +55,7 @@ export interface FortuneData {
  * @property {number} entropy 熵指数
  * @property {number} balance 平衡度
  * @property {number} extremeRate 极值率
- * @property {number[]} heatmap 热图数据（8个分段）
+ * @property {number[]} heatmap 热图数据（10个分段）
  * @property {string} trendGraph 走势图
  */
 export interface AnalysisResult {
@@ -247,8 +247,8 @@ export class FortuneStore {
     const balance = (mean - 50) * 2;
     const extremeRate = (scores.filter(s => s <= 10 || s >= 90).length / count) * 100;
     // 热图数据
-    const heatmap = [0,0,0,0,0,0,0,0];
-    scores.forEach(s => heatmap[Math.min(Math.floor(s / 12.5), 7)]++);
+    const heatmap = [0,0,0,0,0,0,0,0,0,0];  // 修改为10个元素
+    scores.forEach(s => heatmap[Math.min(Math.floor(s / 10), 9)]++);  // 修改分段计算
     // 走势图生成
     const trendGraph = this.generateTrendGraph(scores.slice(0, Math.min(recentLimit || 10, scores.length)));
     return {

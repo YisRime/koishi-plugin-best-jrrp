@@ -293,32 +293,36 @@ export function apply(ctx: Context, config: Config) {
       // 热图显示
       const heatmap = (() => {
         if (!user.heatmap?.length) return '数据不足';
-        const emojis = ['🟦', '🟩', '🟨', '🟧', '🟥', '🟪', '🟫', '⬛'];
+        const grays = [' ', '░', '▒', '▒', '▓', '▓', '▓', '█', '█', '█'];
         const total = user.heatmap.reduce((s, v) => s + v, 0) || 1;
         return user.heatmap.map((v, i) =>
-          emojis[Math.min(Math.floor(v/total * emojis.length * 1.5), emojis.length-1)]
+          grays[Math.min(Math.floor(v/total * grays.length * 1.5), grays.length-1)]
         ).join('');
       })();
       // 平衡度指示
       const balance = (() => {
         const val = user.balance || 0;
-        const dir = val >= 0 ? '↗' : '↘';
+        const dir = val >= 0 ? '▲' : '▼';
         const level = Math.min(Math.floor(Math.abs(val) / 10), 5);
-        return `${fmt(val)} ${dir}${'▁▂▃▄▅▆▇'.slice(0, level)}`;
+        return `${fmt(val)} ${dir}${'▁▂▃▄▅'.slice(0, level)}`;
       })();
       // 格式化最近记录
       const recentParts = [];
       if (user.recentScores?.length) {
         recentParts.push('——最近记录——');
         const scores = user.recentScores.map(s => s.toString().padStart(2));
-        recentParts.push(scores.slice(0, 5).join(' | '));
-        if (scores.length > 5) recentParts.push(scores.slice(5, 10).join(' | '));
+        recentParts.push(`| ${scores.slice(0, 5).join(' | ')} |`);
+        if (scores.length > 5) {
+          const secondRow = scores.slice(5, 10);
+          while (secondRow.length < 5) secondRow.push('  ');
+          recentParts.push(`| ${secondRow.join(' | ')} |`);
+        }
       }
       // 构建消息
       return [
         `——${session.username}的人品分析——`,
-        `类型: ${user.luckType || '未知'} 平衡: ${balance}`,
-        `均值: ${fmt(user.mean)} [${user.min}-${user.max}]（${user.count}条）`,
+        `${user.luckType || '未知'}型 ${balance}`,
+        `均值: ${fmt(user.mean)} [${user.min}-${user.max}] (${user.count})`,
         `熵值: ${fmt(user.entropy || 0)}% 极值: ${fmt(user.extremeRate || 0)}%`,
         `走势: ${user.trendGraph || '数据不足'}`,
         `分布: ${heatmap}`,
