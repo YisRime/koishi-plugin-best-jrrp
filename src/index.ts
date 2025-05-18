@@ -1,6 +1,6 @@
 import { Context, Schema } from 'koishi'
 import { FortuneCalc } from './fortunecalc'
-import { FortuneStore } from './fortunestore'
+import { FortuneStore, TrendType } from './fortunestore'
 import { MsgBuilder, ScoreDisplayFormat } from './msgbuilder'
 import { CodeStore } from './codestore'
 
@@ -283,28 +283,94 @@ export function apply(ctx: Context, config: Config) {
         return msg;
       });
   jrrp.subcommand('.analyse', '分析人品数据')
-    .usage('分析你近15天的人品数据统计')
+    .usage('分析你近30天的人品数据统计')
     .action(async ({ session }) => {
       if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
       const stats = await store.getStatsComparison(session.userId);
       if (stats.user.count === 0) return '暂无人品记录可供分析';
-      const getCompareSymbol = (user: number, global: number) => {
-        if (user > global) return '▲';
-        if (user < global) return '▼';
-        return '━';
-      };
-      const msg = [
-        `——${session.username}的人品分析——`,
-        `平均分: ${stats.user.mean.toFixed(1)} ${getCompareSymbol(stats.user.mean, stats.global.mean)} [${stats.global.mean.toFixed(1)}]`,
-        `中位数: ${stats.user.median.toFixed(1)}  [${stats.user.min}~${stats.user.max}]`,
-        `标准差: ${stats.user.stdDev.toFixed(1)} ${getCompareSymbol(stats.user.stdDev, stats.global.stdDev)} [${stats.global.stdDev.toFixed(1)}]`,
-        `——近期记录——`
-      ];
-      if (stats.user.recentScores && stats.user.recentScores.length > 0) {
-        for (let i = 0; i < stats.user.recentScores.length; i += 5) {
-          msg.push(stats.user.recentScores.slice(i, i + 5).map(s => s.toString().padStart(2)).join(' | '));
+
+      // 生成趋势描述
+      const getTrendDescription = (trend: TrendType) => {
+        switch (trend) {
+          case TrendType.UP: return '📈 上升';
+          case TrendType.DOWN: return '📉 下降';
+          case TrendType.STABLE: return '📊 稳定';
+          case TrendType.VOLATILE: return '📊 波动';
+          default: return '❓ 未知';
         }
+      };
+
+      // 生成波动性描述
+      const getVolatilityDesc = (vol: number) => {
+        if (vol < 20) return '非常稳定';
+        if (vol < 40) return '较为稳定';
+        if (vol < 60) return '正常波动';
+        if (vol < 80) return '波动较大';
+        return '极不稳定';
+      };
+
+      // 生成百分位排名描述
+      const getPercentileDesc = (pct: number) => {
+        if (pct >= 90) return '🌟 Top 10%';
+        if (pct >= 75) return '✨ Top 25%';
+        if (pct >= 50) return '⭐ Top 50%';
+        if (pct >= 25) return '💫 Top 75%';
+        return '💭 较低';
+      };
+
+      // 生成分布图
+      const generateDistributionChart = (dist: Record<string, number>, total: number) => {
+        if (total === 0) return '';
+        const bars = ['0-20', '21-40', '41-60', '61-80', '81-100'].map(range => {
+          const count = dist[range] || 0;
+          const percent = Math.round((count / total) * 100);
+          const barLength = Math.ceil(percent / 10);
+          const bar = '█'.repeat(Math.min(barLength, 10));
+          return `${range}: ${bar} ${percent}%`;
+        });
+        return bars.join('\n');
+      };
+
+      // 构建分析结果
+      const msg = [
+        `📊 ${session.username}的人品分析`,
+        `⏱️ 统计周期：最近${stats.user.count}天`,
+        ``,
+        `🔢 基础数据`,
+        `平均: ${stats.user.mean.toFixed(1)}分 (全局${stats.global.mean.toFixed(1)}分)`,
+        `范围: ${stats.user.min}-${stats.user.max}分`,
+        `波动: ${getVolatilityDesc(stats.user.volatility)}`,
+        ``,
+        `📈 趋势分析`,
+        `当前: ${getTrendDescription(stats.user.trend)}`,
+        stats.user.consecutiveUp > 0 ? `连升: ${stats.user.consecutiveUp}天` :
+        stats.user.consecutiveDown > 0 ? `连降: ${stats.user.consecutiveDown}天` : '无明显连续趋势',
+        `排名: ${getPercentileDesc(stats.user.percentile)}`,
+        ``,
+        `📊 最近走势`,
+        `${stats.user.sparkline || '暂无数据'}`
+      ];
+
+      // 如果有足够的数据，添加分布图
+      if (stats.user.count >= 5) {
+        msg.push(
+          ``,
+          `📊 分数分布`,
+          generateDistributionChart(stats.user.distribution, stats.user.count)
+        );
       }
+
+      // 如果有最近分数记录，添加到输出
+      if (stats.user.recentScores && stats.user.recentScores.length > 0) {
+        msg.push(
+          ``,
+          `📅 最近记录`,
+          stats.user.recentScores.slice(-10).map((score, i) =>
+            `${i + 1}: ${score}分`
+          ).join(' | ')
+        );
+      }
+
       return msg.join('\n');
     });
   jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })
