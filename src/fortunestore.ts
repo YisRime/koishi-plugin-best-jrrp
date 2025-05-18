@@ -40,18 +40,6 @@ export interface FortuneData {
 }
 
 /**
- * 趋势类型枚举
- * @enum {string}
- */
-export enum TrendType {
-  UP = 'up',
-  DOWN = 'down',
-  STABLE = 'stable',
-  VOLATILE = 'volatile',
-  UNKNOWN = 'unknown'
-}
-
-/**
  * 简化的统计分析结果接口
  * @interface AnalysisResult
  * @property {number} count 记录数量
@@ -61,13 +49,14 @@ export enum TrendType {
  * @property {number} min 最低分
  * @property {number} max 最高分
  * @property {number[]} recentScores 最近的分数
- * @property {TrendType} trend 分数趋势
- * @property {number} volatility 波动率 (0-100)
- * @property {number} percentile 百分位排名 (0-100)
- * @property {number} consecutiveUp 连续上升天数
- * @property {number} consecutiveDown 连续下降天数
- * @property {Record<string, number>} distribution 分数分布
- * @property {string} sparkline 迷你图表
+ * @property {string} luckType 运气类型
+ * @property {Object} distribution 分布统计
+ * @property {number[]} histogram 直方图数据
+ * @property {number} entropy 熵指数
+ * @property {number} balance 平衡度
+ * @property {number} extremeRate 极值率
+ * @property {number[]} heatmap 热图数据（8个分段）
+ * @property {string} trendGraph 走势图
  */
 export interface AnalysisResult {
   count: number
@@ -77,13 +66,14 @@ export interface AnalysisResult {
   min: number
   max: number
   recentScores?: number[]
-  trend: TrendType
-  volatility: number
-  percentile: number
-  consecutiveUp: number
-  consecutiveDown: number
-  distribution: Record<string, number>
-  sparkline: string
+  luckType?: string  // 改为字符串类型
+  distribution?: { low: number, medium: number, high: number }
+  histogram?: number[]
+  entropy?: number
+  balance?: number
+  extremeRate?: number
+  heatmap?: number[]
+  trendGraph?: string
 }
 
 /**
@@ -205,51 +195,14 @@ export class FortuneStore {
    */
   async getStatsComparison(userId: string): Promise<StatsComparison> {
     try {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - 30); // 分析最近30天数据
-      const cutoffDateStr = cutoffDate.toLocaleDateString('sv-SE');
-
+      const cutoffDateStr = new Date(Date.now() - 15 * 24 * 3600 * 1000).toLocaleDateString('sv-SE');
       const [globalRecords, userRecords] = await Promise.all([
         this.ctx.database.select('jrrp').where({ date: { $gte: cutoffDateStr } }).execute(),
-        this.ctx.database.select('jrrp').where({ date: { $gte: cutoffDateStr }, userId }).orderBy('date', 'asc').execute()
+        this.ctx.database.select('jrrp').where({ date: { $gte: cutoffDateStr }, userId }).orderBy('date', 'desc').execute()
       ]);
-
-      // 按照日期对全局记录进行分组，用于计算百分位排名
-      const globalByDate: Record<string, number[]> = {};
-      for (const record of globalRecords) {
-        if (!globalByDate[record.date]) globalByDate[record.date] = [];
-        globalByDate[record.date].push(record.score);
-      }
-
-      // 计算用户在每天的百分位排名
-      let totalPercentile = 0;
-      let percentileCount = 0;
-
-      for (const record of userRecords) {
-        const dailyScores = globalByDate[record.date];
-        if (dailyScores && dailyScores.length > 1) {
-          const belowCount = dailyScores.filter(s => s < record.score).length;
-          const percentile = (belowCount / dailyScores.length) * 100;
-          totalPercentile += percentile;
-          percentileCount++;
-        }
-      }
-
-      const avgPercentile = percentileCount > 0 ? totalPercentile / percentileCount : 50;
-
-      // 分析用户数据，传入平均百分位排名
-      const userAnalysis = this.analyzeData(userRecords, 15, avgPercentile);
-      // 分析全局数据
-      const globalAnalysis = this.analyzeData(globalRecords, undefined, 50);
-
-      return { user: userAnalysis, global: globalAnalysis };
+      return { user: this.analyzeData(userRecords, 10), global: this.analyzeData(globalRecords) };
     } catch (error) {
-      const emptyResult: AnalysisResult = {
-        count: 0, mean: 0, median: 0, stdDev: 0, min: 0, max: 0,
-        recentScores: [], trend: TrendType.UNKNOWN, volatility: 0,
-        percentile: 50, consecutiveUp: 0, consecutiveDown: 0,
-        distribution: {}, sparkline: ''
-      };
+      const emptyResult: AnalysisResult = { count: 0, mean: 0, median: 0, stdDev: 0, min: 0, max: 0, recentScores: [] };
       return { user: emptyResult, global: emptyResult };
     }
   }
@@ -258,112 +211,82 @@ export class FortuneStore {
    * 分析人品数据集合
    * @param {JrrpEntry[]} records 人品记录集合
    * @param {number} [recentLimit] 最近记录的限制数量
-   * @param {number} [percentile] 平均百分位排名
    * @returns {AnalysisResult} 分析结果
    */
-  analyzeData(records: JrrpEntry[], recentLimit?: number, percentile: number = 50): AnalysisResult {
-    if (!records?.length) {
-      return {
-        count: 0, mean: 0, median: 0, stdDev: 0, min: 0, max: 0,
-        recentScores: [], trend: TrendType.UNKNOWN, volatility: 0,
-        percentile, consecutiveUp: 0, consecutiveDown: 0,
-        distribution: {}, sparkline: ''
-      };
-    }
-
+  analyzeData(records: JrrpEntry[], recentLimit?: number): AnalysisResult {
+    if (!records?.length) return {
+      count: 0, mean: 0, median: 0, stdDev: 0, min: 0, max: 0,
+      recentScores: [], distribution: { low: 0, medium: 0, high: 0 }
+    };
     const scores = records.map(e => e.score);
     const count = scores.length;
     const sorted = [...scores].sort((a, b) => a - b);
     const sum = scores.reduce((a, b) => a + b, 0);
     const mean = sum / count;
     const stdDev = Math.sqrt(scores.reduce((a, s) => a + Math.pow(s - mean, 2), 0) / count);
-
-    // 计算分数分布
-    const distribution: Record<string, number> = {};
-    const ranges = ['0-20', '21-40', '41-60', '61-80', '81-100'];
-    ranges.forEach(range => distribution[range] = 0);
-
-    for (const score of scores) {
-      if (score <= 20) distribution['0-20']++;
-      else if (score <= 40) distribution['21-40']++;
-      else if (score <= 60) distribution['41-60']++;
-      else if (score <= 80) distribution['61-80']++;
-      else distribution['81-100']++;
-    }
-
-    // 计算分数趋势
-    let trend = TrendType.UNKNOWN;
-    let consecutiveUp = 0;
-    let consecutiveDown = 0;
-
-    if (count >= 3) {
-      const recent = recentLimit ? scores.slice(-recentLimit) : scores;
-
-      // 计算最近的上升和下降趋势
-      let ups = 0, downs = 0, sames = 0;
-      for (let i = 1; i < recent.length; i++) {
-        if (recent[i] > recent[i-1]) ups++;
-        else if (recent[i] < recent[i-1]) downs++;
-        else sames++;
-      }
-
-      // 计算连续上升下降天数
-      for (let i = scores.length - 2; i >= 0; i--) {
-        if (scores[i+1] > scores[i]) consecutiveUp++;
-        else break;
-      }
-
-      for (let i = scores.length - 2; i >= 0; i--) {
-        if (scores[i+1] < scores[i]) consecutiveDown++;
-        else break;
-      }
-
-      const total = ups + downs + sames;
-      if (total > 0) {
-        const upPercent = ups / total * 100;
-        const downPercent = downs / total * 100;
-
-        if (upPercent >= 60) trend = TrendType.UP;
-        else if (downPercent >= 60) trend = TrendType.DOWN;
-        else if (sames >= total * 0.5) trend = TrendType.STABLE;
-        else trend = TrendType.VOLATILE;
-      }
-    }
-
-    // 计算波动率 (0-100)
-    const volatility = Math.min(100, stdDev * 2);
-
-    // 生成迷你图表
-    const sparklineArray = recentLimit && scores.length > 1 ? scores.slice(-Math.min(recentLimit, scores.length)) : [];
-    const sparkline = this.generateSparkline(sparklineArray);
-
+    // 基本区间分布计算
+    const distribution = {
+      low: scores.filter(s => s <= 33).length / count,
+      medium: scores.filter(s => s > 33 && s <= 66).length / count,
+      high: scores.filter(s => s > 66).length / count
+    };
+    // 计算直方图数据
+    const histogram = Array(10).fill(0);
+    scores.forEach(s => histogram[Math.min(Math.floor(s / 10), 9)]++);
+    const maxBin = Math.max(...histogram);
+    const normalizedHistogram = maxBin > 0 ? histogram.map(bin => bin / maxBin) : histogram;
+    // 确定运气类型
+    let luckType = '均衡';
+    if (distribution.high > 0.5) luckType = '较高';
+    else if (distribution.low > 0.5) luckType = '较低';
+    else if (stdDev > 30) luckType = '极端';
+    else if (distribution.medium > 0.6) luckType = '中庸';
+    // 熵指数计算
+    const entropy = this.calculateEntropy(normalizedHistogram, count);
+    // 平衡度和极值率
+    const balance = (mean - 50) * 2;
+    const extremeRate = (scores.filter(s => s <= 10 || s >= 90).length / count) * 100;
+    // 热图数据
+    const heatmap = [0,0,0,0,0,0,0,0];
+    scores.forEach(s => heatmap[Math.min(Math.floor(s / 12.5), 7)]++);
+    // 走势图生成
+    const trendGraph = this.generateTrendGraph(scores.slice(0, Math.min(recentLimit || 10, scores.length)));
     return {
-      count, mean, median: sorted[Math.floor(count / 2)],
-      stdDev, min: sorted[0], max: sorted[sorted.length - 1],
-      recentScores: recentLimit ? scores.slice(-recentLimit) : undefined,
-      trend, volatility, percentile,
-      consecutiveUp, consecutiveDown,
-      distribution, sparkline
+      count, mean, stdDev, min: sorted[0], max: sorted[count - 1],
+      median: count % 2 ? sorted[Math.floor(count / 2)] : (sorted[count / 2 - 1] + sorted[count / 2]) / 2,
+      recentScores: recentLimit ? scores.slice(0, recentLimit) : undefined,
+      luckType, distribution, histogram: normalizedHistogram, entropy, balance, extremeRate, heatmap, trendGraph
     };
   }
 
   /**
-   * 生成文本迷你图表
-   * @param {number[]} scores 分数数组
-   * @returns {string} 文本图表
+   * 计算熵指数
+   * @param {number[]} histogram 直方图数据
+   * @param {number} count 总记录数
+   * @returns {number} 熵指数(0-100)
    */
-  private generateSparkline(scores: number[]): string {
-    if (!scores.length) return '';
+  private calculateEntropy(histogram: number[], count: number): number {
+    const probabilities = histogram.map(h => h / count).filter(p => p > 0);
+    if (probabilities.length === 0) return 0;
+    const rawEntropy = -probabilities.reduce((sum, p) => sum + p * Math.log2(p), 0);
+    return Math.min(100, (rawEntropy / Math.log2(10)) * 100);
+  }
 
+  /**
+   * 生成走势图
+   * @param {number[]} scores 分数列表
+   * @returns {string} 走势图字符串
+   */
+  private generateTrendGraph(scores: number[]): string {
+    if (!scores.length) return '';
     const chars = '▁▂▃▄▅▆▇█';
     const min = Math.min(...scores);
     const max = Math.max(...scores);
     const range = max - min || 1;
-
     return scores.map(score => {
-      // 将分数映射到0-7的范围内
-      const level = Math.floor(((score - min) / range) * (chars.length - 1));
-      return chars.charAt(level);
+      const normalized = (score - min) / range;
+      const charIndex = Math.min(Math.floor(normalized * chars.length), chars.length - 1);
+      return chars[charIndex];
     }).join('');
   }
 }

@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-best-jrrp?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-best-jrrp)
 
-今日人品？今日运势？多算法支持、多样化显示、强大的数据分析、自定义消息配置，打造属于你的究极人品体验！
+支持真随机的今日人品（运势），可自定义消息，还有节日祝福，甚至还有随机图片哦~
 
 ## 功能特性
 

@@ -1,6 +1,6 @@
 import { Context, Schema } from 'koishi'
 import { FortuneCalc } from './fortunecalc'
-import { FortuneStore, TrendType } from './fortunestore'
+import { FortuneStore } from './fortunestore'
 import { MsgBuilder, ScoreDisplayFormat } from './msgbuilder'
 import { CodeStore } from './codestore'
 
@@ -283,95 +283,47 @@ export function apply(ctx: Context, config: Config) {
         return msg;
       });
   jrrp.subcommand('.analyse', '分析人品数据')
-    .usage('分析你近30天的人品数据统计')
+    .usage('分析你近期的人品数据并得出统计结果')
     .action(async ({ session }) => {
       if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
       const stats = await store.getStatsComparison(session.userId);
       if (stats.user.count === 0) return '暂无人品记录可供分析';
-
-      // 生成趋势描述
-      const getTrendDescription = (trend: TrendType) => {
-        switch (trend) {
-          case TrendType.UP: return '📈 上升';
-          case TrendType.DOWN: return '📉 下降';
-          case TrendType.STABLE: return '📊 稳定';
-          case TrendType.VOLATILE: return '📊 波动';
-          default: return '❓ 未知';
-        }
-      };
-
-      // 生成波动性描述
-      const getVolatilityDesc = (vol: number) => {
-        if (vol < 20) return '非常稳定';
-        if (vol < 40) return '较为稳定';
-        if (vol < 60) return '正常波动';
-        if (vol < 80) return '波动较大';
-        return '极不稳定';
-      };
-
-      // 生成百分位排名描述
-      const getPercentileDesc = (pct: number) => {
-        if (pct >= 90) return '🌟 Top 10%';
-        if (pct >= 75) return '✨ Top 25%';
-        if (pct >= 50) return '⭐ Top 50%';
-        if (pct >= 25) return '💫 Top 75%';
-        return '💭 较低';
-      };
-
-      // 生成分布图
-      const generateDistributionChart = (dist: Record<string, number>, total: number) => {
-        if (total === 0) return '';
-        const bars = ['0-20', '21-40', '41-60', '61-80', '81-100'].map(range => {
-          const count = dist[range] || 0;
-          const percent = Math.round((count / total) * 100);
-          const barLength = Math.ceil(percent / 10);
-          const bar = '█'.repeat(Math.min(barLength, 10));
-          return `${range}: ${bar} ${percent}%`;
-        });
-        return bars.join('\n');
-      };
-
-      // 构建分析结果
-      const msg = [
-        `📊 ${session.username}的人品分析`,
-        `⏱️ 统计周期：最近${stats.user.count}天`,
-        ``,
-        `🔢 基础数据`,
-        `平均: ${stats.user.mean.toFixed(1)}分 (全局${stats.global.mean.toFixed(1)}分)`,
-        `范围: ${stats.user.min}-${stats.user.max}分`,
-        `波动: ${getVolatilityDesc(stats.user.volatility)}`,
-        ``,
-        `📈 趋势分析`,
-        `当前: ${getTrendDescription(stats.user.trend)}`,
-        stats.user.consecutiveUp > 0 ? `连升: ${stats.user.consecutiveUp}天` :
-        stats.user.consecutiveDown > 0 ? `连降: ${stats.user.consecutiveDown}天` : '无明显连续趋势',
-        `排名: ${getPercentileDesc(stats.user.percentile)}`,
-        ``,
-        `📊 最近走势`,
-        `${stats.user.sparkline || '暂无数据'}`
-      ];
-
-      // 如果有足够的数据，添加分布图
-      if (stats.user.count >= 5) {
-        msg.push(
-          ``,
-          `📊 分数分布`,
-          generateDistributionChart(stats.user.distribution, stats.user.count)
-        );
+      const { user } = stats;
+      const fmt = (num) => typeof num === 'number' ? num.toFixed(1) : '0.0';
+      // 热图显示
+      const heatmap = (() => {
+        if (!user.heatmap?.length) return '数据不足';
+        const emojis = ['🟦', '🟩', '🟨', '🟧', '🟥', '🟪', '🟫', '⬛'];
+        const total = user.heatmap.reduce((s, v) => s + v, 0) || 1;
+        return user.heatmap.map((v, i) =>
+          emojis[Math.min(Math.floor(v/total * emojis.length * 1.5), emojis.length-1)]
+        ).join('');
+      })();
+      // 平衡度指示
+      const balance = (() => {
+        const val = user.balance || 0;
+        const dir = val >= 0 ? '↗' : '↘';
+        const level = Math.min(Math.floor(Math.abs(val) / 10), 5);
+        return `${fmt(val)} ${dir}${'▁▂▃▄▅▆▇'.slice(0, level)}`;
+      })();
+      // 格式化最近记录
+      const recentParts = [];
+      if (user.recentScores?.length) {
+        recentParts.push('——最近记录——');
+        const scores = user.recentScores.map(s => s.toString().padStart(2));
+        recentParts.push(scores.slice(0, 5).join(' | '));
+        if (scores.length > 5) recentParts.push(scores.slice(5, 10).join(' | '));
       }
-
-      // 如果有最近分数记录，添加到输出
-      if (stats.user.recentScores && stats.user.recentScores.length > 0) {
-        msg.push(
-          ``,
-          `📅 最近记录`,
-          stats.user.recentScores.slice(-10).map((score, i) =>
-            `${i + 1}: ${score}分`
-          ).join(' | ')
-        );
-      }
-
-      return msg.join('\n');
+      // 构建消息
+      return [
+        `——${session.username}的人品分析——`,
+        `类型: ${user.luckType || '未知'} 平衡: ${balance}`,
+        `均值: ${fmt(user.mean)} [${user.min}-${user.max}]（${user.count}条）`,
+        `熵值: ${fmt(user.entropy || 0)}% 极值: ${fmt(user.extremeRate || 0)}%`,
+        `走势: ${user.trendGraph || '数据不足'}`,
+        `分布: ${heatmap}`,
+        recentParts.join('\n')
+      ].join('\n');
     });
   jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })
     .usage('清除人品数据')
