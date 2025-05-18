@@ -75,6 +75,7 @@ export interface SpecialMessage {
  * @property {boolean} enableDate 是否启用日期查询
  * @property {boolean} enableScore 是否启用分数预测
  * @property {boolean} enableRank 是否启用排行榜
+ * @property {boolean} enableAnalyse 是否启用数据分析
  * @property {string} [imagesPath] 占位符"{pixiv}"数据地址，可以是网址或本地目录
  */
 export interface Config {
@@ -92,6 +93,7 @@ export interface Config {
   enableDate: boolean
   enableScore: boolean
   enableRank: boolean
+  enableAnalyse: boolean
   imagesPath?: string
 }
 
@@ -100,6 +102,7 @@ export const Config: Schema<Config> = Schema.intersect([
     enableDate: Schema.boolean().description('启用日期查询').default(true),
     enableScore: Schema.boolean().description('启用分数预测').default(true),
     enableRank: Schema.boolean().description('启用分数排行').default(true),
+    enableAnalyse: Schema.boolean().description('启用数据分析').default(true),
     enableCode: Schema.union([
       Schema.const(false).description('禁用'),
       Schema.string().description('启用').role('secret')
@@ -282,59 +285,66 @@ export function apply(ctx: Context, config: Config) {
         }
         return msg;
       });
-  jrrp.subcommand('.analyse', '分析人品数据')
-    .usage('分析你近期的人品数据并得出统计结果')
-    .action(async ({ session }) => {
-      if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
-      const stats = await store.getStatsComparison(session.userId);
-      if (stats.user.count === 0) return '暂无人品记录可供分析';
-      const { user } = stats;
-      const fmt = (num) => typeof num === 'number' ? num.toFixed(1) : '0.0';
-      // 热图显示
-      const heatmap = (() => {
-        if (!user.heatmap?.length) return '数据不足';
-        const grays = [' ', '░', '▒', '▒', '▓', '▓', '▓', '█', '█', '█'];
-        const total = user.heatmap.reduce((s, v) => s + v, 0) || 1;
-        return user.heatmap.map((v, i) =>
-          grays[Math.min(Math.floor(v/total * grays.length * 1.5), grays.length-1)]
-        ).join('');
-      })();
-      // 平衡度指示
-      const balance = (() => {
-        const val = user.balance || 0;
-        const dir = val >= 0 ? '▲' : '▼';
-        const level = Math.min(Math.floor(Math.abs(val) / 10), 5);
-        return `${fmt(val)} ${dir}${'▁▂▃▄▅'.slice(0, level)}`;
-      })();
-      // 格式化最近记录
-      const recentParts = [];
-      if (user.recentScores?.length) {
-        recentParts.push('——最近记录——');
-        const scores = user.recentScores.map(s => s.toString().padStart(2));
-        recentParts.push(`| ${scores.slice(0, 5).join(' | ')} |`);
-        if (scores.length > 5) {
-          const secondRow = scores.slice(5, 10);
-          while (secondRow.length < 5) secondRow.push('  ');
-          recentParts.push(`| ${secondRow.join(' | ')} |`);
+  if (config.enableAnalyse)
+    jrrp.subcommand('.analyse', '分析人品数据')
+      .usage('分析你近期的人品数据并得出统计结果\n均值: 平均分数[分数范围](数据数)\n熵值: 随机程度 极值: 出现频率\n走势: 变化趋势 分布: 分布密度')
+      .action(async ({ session }) => {
+        if (!session.userId) { autoRecall(session, await session.send('无法获取用户信息')); return }
+        const stats = await store.getStatsComparison(session.userId);
+        if (stats.user.count === 0) return '暂无人品记录可供分析';
+        const { user } = stats;
+        const fmt = (num) => typeof num === 'number' ? num.toFixed(1) : '0.0';
+        // 热图显示
+        const heatmap = (() => {
+          if (!user.heatmap?.length) return '数据不足';
+          const grays = [' ', '░', '▒', '▒', '▓', '▓', '▓', '█', '█', '█'];
+          const total = user.heatmap.reduce((s, v) => s + v, 0) || 1;
+          return user.heatmap.map((v, i) =>
+            grays[Math.min(Math.floor(v/total * grays.length * 1.5), grays.length-1)]
+          ).join('');
+        })();
+        // 平衡度指示
+        const balance = (() => {
+          const val = user.balance || 0;
+          const dir = val >= 0 ? '▲' : '▼';
+          const level = Math.min(Math.floor(Math.abs(val) / 10), 5);
+          return `${fmt(val)} ${dir}${'▁▂▃▄▅'.slice(0, level)}`;
+        })();
+        // 格式化最近记录
+        const recentParts = [];
+        if (user.recentScores?.length) {
+          recentParts.push('——最近记录——');
+          const scores = user.recentScores.map(s => s.toString().padStart(2));
+          recentParts.push(`| ${scores.slice(0, 5).join(' | ')} |`);
+          if (scores.length > 5) {
+            const secondRow = scores.slice(5, 10);
+            while (secondRow.length < 5) secondRow.push('  ');
+            recentParts.push(`| ${secondRow.join(' | ')} |`);
+          }
         }
-      }
-      // 构建消息
-      return [
-        `——${session.username}的人品分析——`,
-        `${user.luckType || '未知'}型 ${balance}`,
-        `均值: ${fmt(user.mean)} [${user.min}-${user.max}] (${user.count})`,
-        `熵值: ${fmt(user.entropy || 0)}% 极值: ${fmt(user.extremeRate || 0)}%`,
-        `走势: ${user.trendGraph || '数据不足'}`,
-        `分布: ${heatmap}`,
-        recentParts.join('\n')
-      ].join('\n');
-    });
+        // 构建消息
+        return [
+          `——${session.username}的人品分析——`,
+          `${user.luckType || '未知'}型 ${balance}`,
+          `均值: ${fmt(user.mean)} [${user.min}-${user.max}] (${user.count})`,
+          `熵值: ${fmt(user.entropy || 0)}% 极值: ${fmt(user.extremeRate || 0)}%`,
+          `走势: ${user.trendGraph || '数据不足'}`,
+          `分布: ${heatmap}`,
+          recentParts.join('\n')
+        ].join('\n');
+      });
   jrrp.subcommand('.clear', '清除人品数据', { authority: 4 })
     .usage('清除人品数据')
     .option('user', '-u <userId> 指定用户ID')
     .option('date', '-d <date> 指定日期')
+    .option('force', '-f 删除数据表')
     .action(async ({ options }) => {
-      const { user: userId, date: dateInput } = options;
+      const { user: userId, date: dateInput, force } = options;
+      if (force) {
+        const result = await store.clearData(undefined, undefined, true);
+        if (result === -1) return '已删除人品数据表';
+        return '删除数据表失败';
+      }
       let dateStr: string;
       if (dateInput) {
         const parsedDate = parseDate(dateInput);

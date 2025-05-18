@@ -174,9 +174,18 @@ export class FortuneStore {
    * 清除人品数据
    * @param {string} [userId] 可选，指定用户ID
    * @param {string} [date] 可选，指定日期
+   * @param {boolean} [dropTable] 可选，是否直接删除数据表
    * @returns {Promise<number>} 清除的记录数量
    */
-  async clearData(userId?: string, date?: string): Promise<number> {
+  async clearData(userId?: string, date?: string, dropTable?: boolean): Promise<number> {
+    if (dropTable) {
+      try {
+        await this.ctx.database.drop('jrrp');
+        return -1;
+      } catch (e) {
+        return 0;
+      }
+    }
     const query: Partial<JrrpEntry> = {};
     if (userId) query.userId = userId;
     if (date) query.date = date;
