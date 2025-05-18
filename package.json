@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-best-jrrp",
   "description": "支持真随机的今日人品（运势），可自定义消息，还有节日祝福，甚至还有随机图片哦~",
-  "version": "2.9.3",
+  "version": "3.0.0",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],
